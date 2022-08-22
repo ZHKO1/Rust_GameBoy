@@ -1,6 +1,14 @@
 use crate::util::{u16_from_2u8, u8u8_from_u16};
 use crate::{memory::Memory, mmu::Mmu};
 use std::{cell::RefCell, rc::Rc};
+use Flag::{C, H, N, Z};
+pub enum Flag {
+    Z = 0b1000_0000,
+    N = 0b0100_0000,
+    H = 0b0010_0000,
+    C = 0b0001_0000,
+}
+
 struct Registers {
     a: u8,
     b: u8,
@@ -28,37 +36,47 @@ impl Registers {
             pc: 0,
         }
     }
-    fn setAF(&mut self, value: u16) {
+    fn set_af(&mut self, value: u16) {
         let (value_low, value_high) = u8u8_from_u16(value);
         self.a = value_high;
         self.f = value_low;
     }
-    fn getAF(&self) -> u16 {
+    fn get_af(&self) -> u16 {
         u16_from_2u8(self.f, self.a)
     }
-    fn setBC(&mut self, value: u16) {
+    fn set_bc(&mut self, value: u16) {
         let (value_low, value_high) = u8u8_from_u16(value);
         self.b = value_high;
         self.c = value_low;
     }
-    fn getBC(&self) -> u16 {
+    fn get_bc(&self) -> u16 {
         u16_from_2u8(self.c, self.b)
     }
-    fn setDE(&mut self, value: u16) {
+    fn set_de(&mut self, value: u16) {
         let (value_low, value_high) = u8u8_from_u16(value);
         self.d = value_high;
         self.e = value_low;
     }
-    fn getDE(&self) -> u16 {
+    fn get_de(&self) -> u16 {
         u16_from_2u8(self.e, self.d)
     }
-    fn setHL(&mut self, value: u16) {
+    fn set_hl(&mut self, value: u16) {
         let (value_low, value_high) = u8u8_from_u16(value);
         self.h = value_high;
         self.l = value_low;
     }
-    fn getHL(&self) -> u16 {
+    fn get_hl(&self) -> u16 {
         u16_from_2u8(self.l, self.h)
+    }
+    fn get_flag(&self, flag: Flag) -> bool {
+        self.f & (flag as u8) != 0
+    }
+    fn set_flag(&mut self, flag: Flag, value: bool) {
+        if value {
+            self.f = self.f | (flag as u8)
+        } else {
+            self.f = self.f & !(flag as u8)
+        }
     }
 }
 pub struct Cpu {
@@ -82,32 +100,53 @@ impl Cpu {
         }
     }
     pub fn step(&mut self) {
-        let opcode = self.get_opcode();
+        let opcode = self.imm();
         self.run_opcode(opcode);
     }
-    fn get_opcode(&self) -> u8 {
-        self.memory.borrow().get(self.reg.pc)
+    fn imm(&mut self) -> u8 {
+        let v = self.memory.borrow().get(self.reg.pc);
+        self.reg.pc += 1;
+        v
+    }
+    fn imm_word(&mut self) -> u16 {
+        let low = self.memory.borrow().get(self.reg.pc);
+        let high = self.memory.borrow().get(self.reg.pc + 1);
+        self.reg.pc += 2;
+        u16_from_2u8(low, high)
     }
     fn run_opcode(&mut self, opcode: u8) {
         match opcode {
-            0x31 => {
-                println!("LD SP,d16");
-                let cycle = 12;
-                let d16 = self.memory.borrow().get_word(self.reg.pc + 1);
-                self.reg.sp = d16;
-                self.reg.pc += 3;
+            // LD rr,d16
+            0x21 | 0x31 => {
+                println!("LD rr,d16");
+                let d16 = self.imm_word();
+                match opcode {
+                    0x21 => self.reg.set_hl(d16),
+                    0x31 => self.reg.sp = d16,
+                    _ => {}
+                }
             }
+            // LD (HL-),A
+            0x32 => {
+                println!("LD (HL-),A");
+                
+            }
+            // XOR A
             0xAF => {
                 println!("XOR A");
-                let cycle = 4;
-                self.reg.a ^= self.reg.a;
-                self.reg.pc += 1;
+                self.opc_xor(self.reg.a);
             }
             _ => {
                 println!("{:02x}", opcode);
                 panic!("unkown opcode");
-                self.reg.pc += 1;
             }
         }
+    }
+    fn opc_xor(&mut self, n: u8) {
+        self.reg.a ^= n;
+        self.reg.set_flag(Z, self.reg.a == 0);
+        self.reg.set_flag(N, false);
+        self.reg.set_flag(H, false);
+        self.reg.set_flag(C, false);
     }
 }
