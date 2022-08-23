@@ -123,6 +123,7 @@ impl Cpu {
     CP (HL)            LD (address),A      LD (address),r      PUSH rr           XOR r
     */
     fn run_opcode(&mut self, opcode: u8) {
+        println!("{:02x}  PC:{:04x}", opcode, self.reg.pc - 1);
         match opcode {
             // PREFIX CB
             0xCB => {
@@ -147,17 +148,47 @@ impl Cpu {
                 self.stack_push(pc);
                 self.reg.pc = a16;
             }
+            // CP d8
+            0xFE => {
+                match opcode {
+                    0xFE => {
+                        let d8 = self.imm();
+                        self.opc_cp(d8);
+                    }
+                    _ => {}
+                };
+            }
+            // DEC r
+            0x05 | 0x3D | 0x0D => match opcode {
+                0x3D => self.reg.a = self.opc_dec(self.reg.a),
+                0x05 => self.reg.b = self.opc_dec(self.reg.b),
+                0x0D => self.reg.c = self.opc_dec(self.reg.c),
+                _ => {}
+            },
             // INC r
-            0x0c => match opcode {
+            0x0c | 0x04 => match opcode {
+                0x04 => self.reg.b = self.opc_inc(self.reg.b),
                 0x0c => self.reg.c = self.opc_inc(self.reg.c),
                 _ => {}
             },
-            // JR NZ,r8
-            0x20 => {
+            // INC rr
+            0x23 | 0x13 => match opcode {
+                0x23 => self.reg.set_hl(self.reg.get_hl() + 1),
+                0x13 => self.reg.set_de(self.reg.get_de() + 1),
+                _ => {}
+            },
+            // JR r8
+            0x18 => {
+                let r8 = self.imm() as i8;
+                self.opc_jr(r8);
+            }
+            // JR cond,address
+            0x20 | 0x28 => {
                 let is_jump = match opcode {
                     0x20 => !self.reg.get_flag(Z),
+                    0x28 => self.reg.get_flag(Z),
                     _ => {
-                        panic!("JR NZ,r8")
+                        panic!("JR NZ,r8. But cond?")
                     }
                 };
                 let r8 = self.imm() as i8;
@@ -165,25 +196,19 @@ impl Cpu {
                     self.opc_jr(r8);
                 }
             }
-            // LD (HL), A
-            0x77 => {
-                let hl = self.reg.get_hl();
+            // LD (address), A
+            0x77 | 0xEA | 0xE0 | 0xE2 => {
+                let address = match opcode {
+                    0x77 => self.reg.get_hl(),
+                    0xEA => self.imm_word(),
+                    0xE0 => (0xFF00 | (self.imm() as u16)),
+                    0xE2 => (0xFF00 | (self.reg.c as u16)),
+                    _ => {
+                        panic!("LD (address), A. But address?")
+                    }
+                };
                 let a = self.reg.a;
-                self.memory.borrow_mut().set(hl, a);
-            }
-            // LD ($FF00+a8),A
-            0xE0 => {
-                let a8 = self.imm();
-                self.memory
-                    .borrow_mut()
-                    .set(0xFF00 | (a8 as u16), self.reg.a);
-            }
-            // LD ($FF00+C),A
-            0xE2 => {
-                let c = self.reg.c;
-                self.memory
-                    .borrow_mut()
-                    .set(0xFF00 | (c as u16), self.reg.a);
+                self.memory.borrow_mut().set(address, a);
             }
             // LD A,(DE)
             0x1a => {
@@ -191,18 +216,29 @@ impl Cpu {
                 let de_v = self.memory.borrow_mut().get(de);
                 self.reg.a = de_v;
             }
+            // LD A,(address)
+            0xF0 => {
+                let address = 0xFF00 | (self.imm() as u16);
+                let value = self.memory.borrow_mut().get(address);
+                self.reg.a = value;
+            }
             // LD r,r
-            0x4f => match opcode {
+            0x4f | 0x7b | 0x67 | 0x57 => match opcode {
                 0x4f => self.reg.c = self.reg.a,
+                0x7b => self.reg.a = self.reg.e,
+                0x67 => self.reg.h = self.reg.a,
+                0x57 => self.reg.d = self.reg.a,
                 _ => {}
             },
             // LD r,d8
-            0x06 | 0x0E | 0x3E => {
+            0x06 | 0x0E | 0x3E | 0x2E | 0x1E => {
                 let d8 = self.imm();
                 match opcode {
+                    0x3E => self.reg.a = d8,
                     0x06 => self.reg.b = d8,
                     0x0E => self.reg.c = d8,
-                    0x3E => self.reg.a = d8,
+                    0x1E => self.reg.e = d8,
+                    0x2E => self.reg.l = d8,
                     _ => {}
                 }
             }
@@ -215,6 +251,13 @@ impl Cpu {
                     0x31 => self.reg.sp = d16,
                     _ => {}
                 }
+            }
+            // LD (HL+),A
+            0x22 => {
+                let hl = self.reg.get_hl();
+                let a = self.reg.a;
+                self.memory.borrow_mut().set(hl, a);
+                self.reg.set_hl(hl.wrapping_add(1));
             }
             // LD (HL-),A
             0x32 => {
@@ -232,6 +275,11 @@ impl Cpu {
             0xC5 => {
                 let bc = self.reg.get_bc();
                 self.stack_push(bc);
+            }
+            // RET
+            0xC9 => {
+                let pc = self.stack_pop();
+                self.reg.pc = pc;
             }
             // RLA
             0x17 => {
@@ -257,13 +305,20 @@ impl Cpu {
     }
     fn opc_jr(&mut self, r8: i8) {
         self.reg.pc = self.reg.pc.wrapping_add(r8 as u16);
-        println!("jump to {:04x}", self.reg.pc);
+        // println!("jump to {:04x}", self.reg.pc);
     }
     fn opc_inc(&mut self, reg: u8) -> u8 {
         let result = reg.wrapping_add(1);
         self.reg.set_flag(Z, result == 0);
         self.reg.set_flag(N, false);
-        self.reg.set_flag(H, (reg & 0x0f) + 0x01 > 0x0f);
+        self.reg.set_flag(H, (reg & 0x0f) == 0x0f);
+        result
+    }
+    fn opc_dec(&mut self, reg: u8) -> u8 {
+        let result = reg.wrapping_sub(1);
+        self.reg.set_flag(Z, result == 0);
+        self.reg.set_flag(N, true);
+        self.reg.set_flag(H, (reg & 0x0F) == 0x00);
         result
     }
     fn opc_rl(&mut self, value: u8) -> u8 {
@@ -276,6 +331,13 @@ impl Cpu {
         self.reg.set_flag(C, c);
         result
     }
+    fn opc_cp(&mut self, value: u8) {
+        let a = self.reg.a;
+        self.reg.set_flag(Z, a == value);
+        self.reg.set_flag(N, true);
+        self.reg.set_flag(H, a & 0x0f < value & 0x0f);
+        self.reg.set_flag(C, a < value);
+    }
     fn opc_cb_bit(&mut self, bit: u8, r: u8) {
         let z = ((1 << bit) & r) == 0;
         self.reg.set_flag(Z, z);
@@ -283,12 +345,12 @@ impl Cpu {
         self.reg.set_flag(H, true);
     }
     fn stack_push(&mut self, value: u16) {
-        self.memory.borrow_mut().set_word(self.reg.sp - 1, value);
         self.reg.sp = self.reg.sp - 2;
+        self.memory.borrow_mut().set_word(self.reg.sp, value);
     }
     fn stack_pop(&mut self) -> u16 {
-        let value = self.memory.borrow_mut().get_word(self.reg.sp + 1);
-        self.memory.borrow_mut().set_word(self.reg.sp + 1, 0);
+        let value = self.memory.borrow_mut().get_word(self.reg.sp);
+        self.memory.borrow_mut().set_word(self.reg.sp, 0);
         self.reg.sp = self.reg.sp + 2;
         value
     }
