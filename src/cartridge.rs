@@ -24,7 +24,7 @@ impl RoomBlank {
         let mut room_blank = RoomBlank {
             start,
             end,
-            memory: [0; 0x8000],
+            memory: [0xFF; 0x8000],
             boot_rom: [0; 0x100],
             is_boot_rom: true,
         };

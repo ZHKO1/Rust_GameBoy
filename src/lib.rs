@@ -15,5 +15,4 @@ fn test() {
     let rc_refcell_mmu = Rc::new(RefCell::new(mmu));
     let mut cpu = Cpu::new(rc_refcell_mmu.clone());
     cpu.run();
-
 }
