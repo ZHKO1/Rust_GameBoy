@@ -1,7 +1,48 @@
+use crate::memory::Memory;
 use crate::util::{u16_from_2u8, u8u8_from_u16};
-use crate::{memory::Memory, mmu::Mmu};
 use std::{cell::RefCell, rc::Rc};
 use Flag::{C, H, N, Z};
+
+//  0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f
+const OP_CYCLES: [u32; 256] = [
+    1, 3, 2, 2, 1, 1, 2, 1, 5, 2, 2, 2, 1, 1, 2, 1, // 0
+    0, 3, 2, 2, 1, 1, 2, 1, 3, 2, 2, 2, 1, 1, 2, 1, // 1
+    2, 3, 2, 2, 1, 1, 2, 1, 2, 2, 2, 2, 1, 1, 2, 1, // 2
+    2, 3, 2, 2, 3, 3, 3, 1, 2, 2, 2, 2, 1, 1, 2, 1, // 3
+    1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, // 4
+    1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, // 5
+    1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, // 6
+    2, 2, 2, 2, 2, 2, 0, 2, 1, 1, 1, 1, 1, 1, 2, 1, // 7
+    1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, // 8
+    1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, // 9
+    1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, // a
+    1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, // b
+    2, 3, 3, 4, 3, 4, 2, 4, 2, 4, 3, 0, 3, 6, 2, 4, // c
+    2, 3, 3, 0, 3, 4, 2, 4, 2, 4, 3, 0, 3, 0, 2, 4, // d
+    3, 3, 2, 0, 0, 4, 2, 4, 4, 1, 4, 0, 0, 0, 2, 4, // e
+    3, 3, 2, 1, 0, 4, 2, 4, 3, 2, 4, 1, 0, 0, 2, 4, // f
+];
+
+//  0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f
+const CB_CYCLES: [u32; 256] = [
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, // 0
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, // 1
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, // 2
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, // 3
+    2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 3, 2, // 4
+    2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 3, 2, // 5
+    2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 3, 2, // 6
+    2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 3, 2, // 7
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, // 8
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, // 9
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, // a
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, // b
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, // c
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, // d
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, // e
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, // f
+];
+
 pub enum Flag {
     Z = 0b1000_0000,
     N = 0b0100_0000,
@@ -81,7 +122,8 @@ impl Registers {
 }
 pub struct Cpu {
     reg: Registers,
-    cycles: usize,
+    cycles: u32,
+    cur_opcode_cycles: u32,
     memory: Rc<RefCell<dyn Memory>>,
 }
 
@@ -92,6 +134,7 @@ impl Cpu {
             reg,
             memory: mmu,
             cycles: 0,
+            cur_opcode_cycles: 0,
         }
     }
     pub fn run(&mut self) {
@@ -99,22 +142,24 @@ impl Cpu {
             self.step();
         }
     }
-    pub fn step(&mut self) {
+    pub fn step(&mut self) -> u32 {
         let opcode = self.imm();
-        self.run_opcode(opcode);
+        let cycles = self.run_opcode(opcode);
+        cycles * 4
     }
-    fn imm(&mut self) -> u8 {
-        let v = self.memory.borrow().get(self.reg.pc);
-        self.reg.pc += 1;
-        v
+    pub fn trick(&mut self) {
+        if self.cycles == 0 {
+            self.cur_opcode_cycles = self.step();
+        }
+        if self.cycles == self.cur_opcode_cycles - 1 {
+            self.cycles = 0;
+            self.cur_opcode_cycles = 0;
+        } else if self.cycles < self.cur_opcode_cycles - 1 {
+            self.cycles += 1;
+        } else {
+            panic!("NOP or HALT?")
+        }
     }
-    fn imm_word(&mut self) -> u16 {
-        let low = self.memory.borrow().get(self.reg.pc);
-        let high = self.memory.borrow().get(self.reg.pc + 1);
-        self.reg.pc += 2;
-        u16_from_2u8(low, high)
-    }
-
     /*
     ADD (address)      DEC r               LD A,(address)      LD rr,d16         RET
     BIT n,r            INC r               LD r,r              LD (HL+),A        RLA
@@ -122,13 +167,15 @@ impl Cpu {
     CP d8              JR cond,address     LD r,(address)      POP rr            SUB r
     CP (HL)            LD (address),A      LD (address),r      PUSH rr           XOR r
     */
-    fn run_opcode(&mut self, opcode: u8) {
+    fn run_opcode(&mut self, opcode: u8) -> u32 {
         println!("{:02x}  PC:{:04x}", opcode, self.reg.pc - 1);
+        let mut cb_opcode = 0;
+        let mut is_jump = false;
         match opcode {
             // PREFIX CB
             0xCB => {
-                let opcode = self.imm();
-                match opcode {
+                cb_opcode = self.imm();
+                match cb_opcode {
                     0x11 => {
                         self.reg.c = self.opc_rl(self.reg.c);
                     }
@@ -136,7 +183,7 @@ impl Cpu {
                         self.opc_cb_bit(7, self.reg.h);
                     }
                     _ => {
-                        println!("{:02x}", opcode);
+                        println!("{:02x}", cb_opcode);
                         panic!("unkown opcode CB");
                     }
                 }
@@ -184,7 +231,7 @@ impl Cpu {
             }
             // JR cond,address
             0x20 | 0x28 => {
-                let is_jump = match opcode {
+                is_jump = match opcode {
                     0x20 => !self.reg.get_flag(Z),
                     0x28 => self.reg.get_flag(Z),
                     _ => {
@@ -294,6 +341,31 @@ impl Cpu {
                 println!("{:02x}  PC:{:04x}", opcode, self.reg.pc - 1);
                 panic!("unkown opcode");
             }
+        };
+        let mut ecycle = 0;
+        if is_jump {
+            ecycle = match opcode {
+                0x20 => 1,
+                0x28 => 1,
+                0xC0 => 3,
+                0xC2 => 1,
+                0xC4 => 3,
+                0xC8 => 3,
+                0xCA => 1,
+                0xCC => 3,
+                0xD0 => 3,
+                0xD2 => 1,
+                0xD4 => 3,
+                0xD8 => 3,
+                0xDA => 1,
+                0xDC => 3,
+                _ => 0,
+            }
+        }
+        if opcode == 0xCB {
+            CB_CYCLES[cb_opcode as usize]
+        } else {
+            OP_CYCLES[opcode as usize] + ecycle
         }
     }
     fn opc_xor(&mut self, n: u8) {
@@ -353,5 +425,16 @@ impl Cpu {
         self.memory.borrow_mut().set_word(self.reg.sp, 0);
         self.reg.sp = self.reg.sp + 2;
         value
+    }
+    fn imm(&mut self) -> u8 {
+        let v = self.memory.borrow().get(self.reg.pc);
+        self.reg.pc += 1;
+        v
+    }
+    fn imm_word(&mut self) -> u16 {
+        let low = self.memory.borrow().get(self.reg.pc);
+        let high = self.memory.borrow().get(self.reg.pc + 1);
+        self.reg.pc += 2;
+        u16_from_2u8(low, high)
     }
 }

@@ -33,21 +33,6 @@ impl Memory for MemoryBlock {
         self.memory[(index - self.start) as usize] = value;
         true
     }
-    fn get_word(&self, index: u16) -> u16 {
-        u16_from_2u8(
-            self.memory[(index - self.start) as usize],
-            self.memory[(index - self.start + 1) as usize],
-        )
-    }
-    fn set_word(&mut self, index: u16, value: u16) -> bool {
-        if index < self.start || index > self.end {
-            return false;
-        }
-        let (value_low, value_high) = u8u8_from_u16(value);
-        self.memory[(index - self.start) as usize] = value_low;
-        self.memory[(index - self.start + 1) as usize] = value_high;
-        true
-    }
 }
 
 pub struct Mmu {
