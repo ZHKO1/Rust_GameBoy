@@ -1,5 +1,5 @@
 use crate::memory::Memory;
-use crate::ppu::PPU_STATUS::{DRAWING, HBLANK, OAMSCAN, VBLANK};
+use crate::ppu::PpuStatus::{DRAWING, HBLANK, OAMSCAN, VBLANK};
 use crate::util::check_bit;
 use std::collections::VecDeque;
 use std::{cell::RefCell, rc::Rc};
@@ -7,7 +7,14 @@ use std::{cell::RefCell, rc::Rc};
 const WIDTH: usize = 256;
 const HEIGHT: usize = 144;
 
-pub enum PPU_STATUS {
+enum Color {
+    WHITE = 0xE0F8D0,
+    LIGHT_GRAY = 0x88C070,
+    DARK_GRAY = 0x346856,
+    BLACK_GRAY = 0x081820,
+}
+
+pub enum PpuStatus {
     OAMSCAN = 2,
     DRAWING = 3,
     HBLANK = 0,
@@ -54,15 +61,14 @@ impl Fetcher {
             let pixel = (pixel_low as u8) + (pixel_high as u8) << 1;
             result.push(pixel);
         }
-        // println!("");
         return result;
     }
 }
-// 获取地图，
+
 pub struct PPU {
     ly: u16,
     cycles: u32,
-    status: PPU_STATUS,
+    status: PpuStatus,
     fetcher: Fetcher,
     fifo: VecDeque<u8>,
     mmu: Rc<RefCell<dyn Memory>>,
@@ -96,7 +102,7 @@ impl PPU {
                     let array = self.fetcher.get(self.ly);
                     for (width, pixel) in array.iter().enumerate() {
                         self.pixel_array[(self.ly as usize * WIDTH + width) as usize] =
-                            if *pixel != 0 { 0xffffff00 } else { 0 };
+                            self.get_pixel_color(*pixel);
                     }
                 }
                 if self.cycles == 251 {
@@ -131,6 +137,27 @@ impl PPU {
                 } else {
                     self.cycles += 1;
                 }
+            }
+        }
+    }
+    fn get_pixel_color(&self, index: u8) -> u32 {
+        let bg_palette = self.mmu.borrow().get(0xFF47);
+        let color_value = match index {
+            0 => bg_palette & 0b11,
+            1 => (bg_palette & 0b1100) >> 2,
+            2 => (bg_palette & 0b110000) >> 4,
+            3 => (bg_palette & 0b11000000) >> 6,
+            _ => {
+                panic!("color index is out of range")
+            }
+        };
+        match color_value {
+            0 => Color::WHITE as u32,
+            1 => Color::LIGHT_GRAY as u32,
+            2 => Color::DARK_GRAY as u32,
+            3 => Color::BLACK_GRAY as u32,
+            _ => {
+                panic!("color_value is out of range");
             }
         }
     }

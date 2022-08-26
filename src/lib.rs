@@ -7,13 +7,13 @@ pub mod ppu;
 pub mod test_rom;
 pub mod util;
 
-use cpu::Cpu;
-use display::Display;
-use mmu::Mmu;
-use ppu::PPU;
-use std::{cell::RefCell, rc::Rc};
 #[test]
 fn test() {
+    use cpu::Cpu;
+    use display::Display;
+    use mmu::Mmu;
+    use ppu::PPU;
+    use std::{cell::RefCell, rc::Rc};
     let mmu = Mmu::new();
     let rc_refcell_mmu = Rc::new(RefCell::new(mmu));
     let mut cpu = Cpu::new(rc_refcell_mmu.clone());
