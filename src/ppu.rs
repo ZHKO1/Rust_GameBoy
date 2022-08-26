@@ -25,7 +25,7 @@ impl Fetcher {
     fn new(mmu: Rc<RefCell<dyn Memory>>) -> Self {
         Fetcher { index: 0, mmu }
     }
-    fn get(&self, ly: u32) {
+    fn get(&self, ly: u16) -> Vec<u8> {
         let lcdc = self.mmu.borrow().get(0xff40);
         // let window_title_map_area = check_bit(lcdc, 6);
         let bg_window_tile_area = check_bit(lcdc, 4);
@@ -34,16 +34,33 @@ impl Fetcher {
             true => (0x9C00, 0x9FFF),
             false => (0x9800, 0x9BFF),
         };
-        for draw_x in 0..=WIDTH {
-            /*
-                32 * 32 Title
-             */
+        let mut result: Vec<u8> = vec![];
+        for draw_x in 0..WIDTH {
+            let bg_map_x = draw_x as u16 / 8;
+            let bg_map_y = ly / 8;
+            let bg_map_index = bg_map_x + bg_map_y * 32;
+            let bg_map_byte = self.mmu.borrow().get(bg_map_start + bg_map_index);
+            let tile_index: u16 = if bg_window_tile_area {
+                0x8000 + bg_map_byte as u16 * 8 * 2
+            } else {
+                (0x9000 as i32 + (bg_map_byte as i8) as i32 * 8 * 2) as u16
+            };
+            let tile_pixel_x = draw_x % 8;
+            let tile_pixel_y = ly % 8;
+            let tile_byte_low = self.mmu.borrow().get(tile_index + tile_pixel_y * 2);
+            let tile_byte_high = self.mmu.borrow().get(tile_index + tile_pixel_y * 2 + 1);
+            let pixel_low = tile_byte_low & (1 << tile_pixel_x) == (1 << tile_pixel_x);
+            let pixel_high = tile_byte_high & (1 << tile_pixel_x) == (1 << tile_pixel_x);
+            let pixel = (pixel_low as u8) + (pixel_high as u8) << 1;
+            result.push(pixel);
         }
+        // println!("");
+        return result;
     }
 }
 // 获取地图，
 pub struct PPU {
-    ly: u32,
+    ly: u16,
     cycles: u32,
     status: PPU_STATUS,
     fetcher: Fetcher,
@@ -67,22 +84,28 @@ impl PPU {
     pub fn trick(&mut self) {
         match self.status {
             OAMSCAN => {
+                // println!("OAMSCAN");
                 if self.cycles == 79 {
                     self.status = DRAWING;
                 }
+                self.cycles += 1;
             }
             DRAWING => {
-                // 80开始
-                // TODO 绘制每一行的像素
-                // 直接绘制背景，不过高度从0画到144
+                // println!("DRAWING");
                 if self.cycles == 80 {
-                    self.fetcher.get(self.ly);
+                    let array = self.fetcher.get(self.ly);
+                    for (width, pixel) in array.iter().enumerate() {
+                        self.pixel_array[(self.ly as usize * WIDTH + width) as usize] =
+                            if *pixel != 0 { 0xffffff00 } else { 0 };
+                    }
                 }
                 if self.cycles == 251 {
                     self.status = HBLANK;
                 }
+                self.cycles += 1;
             }
             HBLANK => {
+                // println!("HBLANK");
                 if self.cycles == 455 {
                     if self.ly == 143 {
                         self.status = VBLANK;
@@ -90,18 +113,26 @@ impl PPU {
                         self.status = OAMSCAN;
                     }
                     self.ly += 1;
+                    self.cycles = 0;
+                } else {
+                    self.cycles += 1;
                 }
             }
             VBLANK => {
+                // println!("VBLANK");
                 if self.cycles == 455 {
                     if self.ly == 153 {
                         self.status = OAMSCAN;
                         self.ly = 0;
+                    } else {
+                        self.ly += 1;
                     }
+                    self.cycles = 0;
+                } else {
+                    self.cycles += 1;
                 }
             }
         }
-        self.cycles += 1;
     }
     pub fn get_lcdc(&self) {
         let lcdc = self.mmu.borrow().get(0xFF40);
