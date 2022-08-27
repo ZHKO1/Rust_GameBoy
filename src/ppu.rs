@@ -56,8 +56,9 @@ impl Fetcher {
             let tile_pixel_y = ly % 8;
             let tile_byte_low = self.mmu.borrow().get(tile_index + tile_pixel_y * 2);
             let tile_byte_high = self.mmu.borrow().get(tile_index + tile_pixel_y * 2 + 1);
-            let pixel_low = tile_byte_low & (1 << tile_pixel_x) == (1 << tile_pixel_x);
-            let pixel_high = tile_byte_high & (1 << tile_pixel_x) == (1 << tile_pixel_x);
+            let pixel_bit = 8 - tile_pixel_x - 1;
+            let pixel_low = tile_byte_low & (1 << pixel_bit) == (1 << pixel_bit);
+            let pixel_high = tile_byte_high & (1 << pixel_bit) == (1 << pixel_bit);
             let pixel = (pixel_low as u8) + (pixel_high as u8) << 1;
             result.push(pixel);
         }
