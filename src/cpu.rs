@@ -168,7 +168,7 @@ impl Cpu {
     CP (HL)            LD (address),A      LD (address),r      PUSH rr           XOR r
     */
     fn run_opcode(&mut self, opcode: u8) -> u32 {
-        println!("{:02x}  PC:{:04x}", opcode, self.reg.pc - 1);
+        // println!("{:02x}  PC:{:04x}", opcode, self.reg.pc - 1);
         let mut cb_opcode = 0;
         let mut is_jump = false;
         match opcode {
