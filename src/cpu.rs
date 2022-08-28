@@ -196,10 +196,15 @@ impl Cpu {
                 self.reg.pc = a16;
             }
             // CP d8
-            0xFE => {
+            0xFE | 0xBE => {
                 match opcode {
                     0xFE => {
                         let d8 = self.imm();
+                        self.opc_cp(d8);
+                    }
+                    0xBE => {
+                        let hl = self.reg.get_hl();
+                        let d8 = self.memory.borrow().get(hl);
                         self.opc_cp(d8);
                     }
                     _ => {}
@@ -282,12 +287,13 @@ impl Cpu {
                 _ => {}
             },
             // LD r,d8
-            0x06 | 0x0E | 0x3E | 0x2E | 0x1E => {
+            0x3E | 0x06 | 0x0E | 0x16 | 0x1E | 0x2E => {
                 let d8 = self.imm();
                 match opcode {
                     0x3E => self.reg.a = d8,
                     0x06 => self.reg.b = d8,
                     0x0E => self.reg.c = d8,
+                    0x16 => self.reg.d = d8,
                     0x1E => self.reg.e = d8,
                     0x2E => self.reg.l = d8,
                     _ => {}
