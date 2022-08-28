@@ -45,6 +45,8 @@ enum FetcherStatus {
 struct Fetcher {
     scan_x: u16,
     scan_y: u16,
+    scx: u8,
+    scy: u8,
     cycles: u16,
     mmu: Rc<RefCell<dyn Memory>>,
     status: FetcherStatus, // result: Vec<u8>,
@@ -58,6 +60,8 @@ impl Fetcher {
         Fetcher {
             scan_x: 0,
             scan_y: 0,
+            scx: 0,
+            scy: 0,
             mmu,
             cycles: 0,
             status: GetTile,
@@ -70,6 +74,10 @@ impl Fetcher {
     fn init(&mut self, x: u16, y: u16) {
         self.scan_x = x;
         self.scan_y = y;
+
+        self.scx = 0;
+        self.scy = 0;
+
         self.cycles = 0;
         self.status = GetTile;
 
@@ -101,20 +109,18 @@ impl Fetcher {
             }
         }
     }
-    fn get_tile(&self) -> u16 {
+    fn get_tile(&mut self) -> u16 {
         let lcdc = self.mmu.borrow().get(0xFF40);
-        let scy = self.mmu.borrow().get(0xFF42);
-        let scx = self.mmu.borrow().get(0xFF43);
-        let scx = 0;
-        let scy = 0;
+        self.scy = self.mmu.borrow().get(0xFF43);
+        self.scx = self.mmu.borrow().get(0xFF43);
         let bg_window_tile_area = check_bit(lcdc, 4);
         let bg_tile_map_area = check_bit(lcdc, 3);
         let (bg_map_start, _): (u16, u16) = match bg_tile_map_area {
             true => (0x9C00, 0x9FFF),
             false => (0x9800, 0x9BFF),
         };
-        let bg_map_x = (self.scan_x + scx as u16) / 8;
-        let bg_map_y = (self.scan_y + scy as u16) / 8;
+        let bg_map_x = (self.scan_x + self.scx as u16) % 256 / 8;
+        let bg_map_y = (self.scan_y + self.scy as u16) % 256 / 8;
         let bg_map_index = bg_map_x + bg_map_y * 32;
         let bg_map_byte = self.mmu.borrow().get(bg_map_start + bg_map_index);
         let tile_index: u16 = if bg_window_tile_area {
@@ -126,19 +132,20 @@ impl Fetcher {
     }
     fn get_tile_data_low(&self) -> u8 {
         let tile_index = self.tile_index;
-        let tile_pixel_y = self.scan_y % 8;
+        let tile_pixel_y = (self.scan_y + self.scy as u16) % 8;
         let tile_byte_low = self.mmu.borrow().get(tile_index + tile_pixel_y * 2);
         tile_byte_low
     }
     fn get_tile_data_high(&self) -> u8 {
         let tile_index = self.tile_index;
-        let tile_pixel_y = self.scan_y % 8;
+        let tile_pixel_y = (self.scan_y + self.scy as u16) % 8;
         let tile_byte_high = self.mmu.borrow().get(tile_index + tile_pixel_y * 2 + 1);
         tile_byte_high
     }
     fn get_buffer(&mut self) -> Vec<Pixel> {
         let mut result = Vec::new();
-        for buffer_index in 0..8 {
+        let buffer_index_start = (self.scan_x + self.scx as u16) % 8;
+        for buffer_index in buffer_index_start..8 {
             let pixel_bit = 8 - buffer_index - 1;
             let pixel_low = self.tile_data_low & (1 << pixel_bit) == (1 << pixel_bit);
             let pixel_high = self.tile_dada_high & (1 << pixel_bit) == (1 << pixel_bit);
