@@ -18,7 +18,7 @@ impl Display {
         .unwrap_or_else(|e| {
             panic!("{}", e);
         });
-        window.limit_update_rate(Some(std::time::Duration::from_micros(166000)));
+        window.limit_update_rate(Some(std::time::Duration::from_micros(16666)));
         Display {
             width,
             height,

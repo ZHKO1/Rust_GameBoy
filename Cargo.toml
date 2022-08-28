@@ -11,3 +11,4 @@ gui = ["minifb"]
 
 [dependencies]
 minifb = { version = "0.23", optional = true }
+chrono = "0.4.22"

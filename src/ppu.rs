@@ -43,8 +43,8 @@ enum FetcherStatus {
 }
 
 struct Fetcher {
-    scan_x: u16,
-    scan_y: u16,
+    scan_x: u8,
+    scan_y: u8,
     scx: u8,
     scy: u8,
     cycles: u16,
@@ -71,7 +71,7 @@ impl Fetcher {
             buffer: Vec::new(),
         }
     }
-    fn init(&mut self, x: u16, y: u16) {
+    fn init(&mut self, x: u8, y: u8) {
         self.scan_x = x;
         self.scan_y = y;
 
@@ -111,7 +111,7 @@ impl Fetcher {
     }
     fn get_tile(&mut self) -> u16 {
         let lcdc = self.mmu.borrow().get(0xFF40);
-        self.scy = self.mmu.borrow().get(0xFF43);
+        self.scy = self.mmu.borrow().get(0xFF42);
         self.scx = self.mmu.borrow().get(0xFF43);
         let bg_window_tile_area = check_bit(lcdc, 4);
         let bg_tile_map_area = check_bit(lcdc, 3);
@@ -119,8 +119,8 @@ impl Fetcher {
             true => (0x9C00, 0x9FFF),
             false => (0x9800, 0x9BFF),
         };
-        let bg_map_x = (self.scan_x + self.scx as u16) % 256 / 8;
-        let bg_map_y = (self.scan_y + self.scy as u16) % 256 / 8;
+        let bg_map_x = (self.scan_x as u16 + self.scx as u16) % 256 / 8;
+        let bg_map_y = (self.scan_y as u16 + self.scy as u16) % 256 / 8;
         let bg_map_index = bg_map_x + bg_map_y * 32;
         let bg_map_byte = self.mmu.borrow().get(bg_map_start + bg_map_index);
         let tile_index: u16 = if bg_window_tile_area {
@@ -132,19 +132,19 @@ impl Fetcher {
     }
     fn get_tile_data_low(&self) -> u8 {
         let tile_index = self.tile_index;
-        let tile_pixel_y = (self.scan_y + self.scy as u16) % 8;
+        let tile_pixel_y = (self.scan_y as u16 + self.scy as u16) % 8;
         let tile_byte_low = self.mmu.borrow().get(tile_index + tile_pixel_y * 2);
         tile_byte_low
     }
     fn get_tile_data_high(&self) -> u8 {
         let tile_index = self.tile_index;
-        let tile_pixel_y = (self.scan_y + self.scy as u16) % 8;
+        let tile_pixel_y = (self.scan_y as u16 + self.scy as u16) % 8;
         let tile_byte_high = self.mmu.borrow().get(tile_index + tile_pixel_y * 2 + 1);
         tile_byte_high
     }
     fn get_buffer(&mut self) -> Vec<Pixel> {
         let mut result = Vec::new();
-        let buffer_index_start = (self.scan_x + self.scx as u16) % 8;
+        let buffer_index_start = (self.scan_x as u16 + self.scx as u16) % 8;
         for buffer_index in buffer_index_start..8 {
             let pixel_bit = 8 - buffer_index - 1;
             let pixel_low = self.tile_data_low & (1 << pixel_bit) == (1 << pixel_bit);
@@ -157,8 +157,8 @@ impl Fetcher {
 }
 
 struct FIFO {
-    scan_x: u16,
-    scan_y: u16,
+    scan_x: u8,
+    scan_y: u8,
     fetcher: Fetcher,
     queue: VecDeque<Pixel>,
 }
@@ -173,7 +173,7 @@ impl FIFO {
             queue: VecDeque::new(),
         }
     }
-    fn init(&mut self, y: u16) {
+    fn init(&mut self, y: u8) {
         self.scan_x = 0;
         self.scan_y = y;
         self.fetcher.init(0, y);
@@ -186,7 +186,7 @@ impl FIFO {
         };
         if self.fetcher.buffer.len() > 0 {
             if self.queue.len() <= 8 {
-                self.scan_x += self.fetcher.buffer.len() as u16;
+                self.scan_x += self.fetcher.buffer.len() as u8;
                 for pixel in self.fetcher.buffer.clone().into_iter() {
                     self.push_back(pixel);
                 }
@@ -209,7 +209,6 @@ impl FIFO {
 }
 
 pub struct PPU {
-    ly: u16,
     cycles: u32,
     status: PpuStatus,
     fifo: FIFO,
@@ -221,7 +220,6 @@ impl PPU {
     pub fn new(mmu: Rc<RefCell<dyn Memory>>) -> Self {
         let fifo = FIFO::new(mmu.clone());
         PPU {
-            ly: 0,
             cycles: 0,
             status: OAMScan,
             mmu,
@@ -237,7 +235,8 @@ impl PPU {
                 if self.cycles == 79 {
                     self.status = Drawing;
                     self.ly_buffer = Vec::new();
-                    self.fifo.init(self.ly);
+                    let ly = self.get_ly();
+                    self.fifo.init(ly);
                 }
                 self.cycles += 1;
             }
@@ -247,9 +246,9 @@ impl PPU {
                 if let Some(pixel) = pixel_option {
                     self.ly_buffer.push(self.get_pixel_color(pixel.pvalue));
                     if self.ly_buffer.len() == WIDTH {
+                        let ly = self.get_ly();
                         for (scan_x, pixel) in self.ly_buffer.iter().enumerate() {
-                            self.frame_buffer[(self.ly as usize * WIDTH + scan_x) as usize] =
-                                *pixel;
+                            self.frame_buffer[(ly as usize * WIDTH + scan_x) as usize] = *pixel;
                         }
                         self.ly_buffer.clear();
                         self.fifo.clear();
@@ -261,13 +260,14 @@ impl PPU {
             }
             HBlank => {
                 // println!("HBlank");
+                let ly = self.get_ly();
                 if self.cycles == 455 {
-                    if self.ly == 143 {
+                    if ly == 143 {
                         self.status = VBlank;
                     } else {
                         self.status = OAMScan;
                     }
-                    self.ly += 1;
+                    self.set_ly(ly + 1);
                     self.cycles = 0;
                 } else {
                     self.cycles += 1;
@@ -275,12 +275,13 @@ impl PPU {
             }
             VBlank => {
                 // println!("VBlank");
+                let ly = self.get_ly();
                 if self.cycles == 455 {
-                    if self.ly == 153 {
+                    if ly == 153 {
                         self.status = OAMScan;
-                        self.ly = 0;
+                        self.set_ly(0);
                     } else {
-                        self.ly += 1;
+                        self.set_ly(ly + 1);
                     }
                     self.cycles = 0;
                 } else {
@@ -310,7 +311,10 @@ impl PPU {
             }
         }
     }
-    pub fn get_lcdc(&self) {
-        let lcdc = self.mmu.borrow().get(0xFF40);
+    fn set_ly(&mut self, ly: u8) {
+        self.mmu.borrow_mut().set(0xFF44, ly);
+    }
+    fn get_ly(&self) -> u8 {
+        self.mmu.borrow().get(0xFF44)
     }
 }

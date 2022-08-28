@@ -206,16 +206,19 @@ impl Cpu {
                 };
             }
             // DEC r
-            0x05 | 0x3D | 0x0D => match opcode {
+            0x05 | 0x3D | 0x0D | 0x15 | 0x1D => match opcode {
                 0x3D => self.reg.a = self.opc_dec(self.reg.a),
                 0x05 => self.reg.b = self.opc_dec(self.reg.b),
                 0x0D => self.reg.c = self.opc_dec(self.reg.c),
+                0x15 => self.reg.d = self.opc_dec(self.reg.d),
+                0x1D => self.reg.e = self.opc_dec(self.reg.e),
                 _ => {}
             },
             // INC r
-            0x0c | 0x04 => match opcode {
+            0x0c | 0x04 | 0x24 => match opcode {
                 0x04 => self.reg.b = self.opc_inc(self.reg.b),
                 0x0c => self.reg.c = self.opc_inc(self.reg.c),
+                0x24 => self.reg.h = self.opc_inc(self.reg.h),
                 _ => {}
             },
             // INC rr
@@ -270,11 +273,12 @@ impl Cpu {
                 self.reg.a = value;
             }
             // LD r,r
-            0x4f | 0x7b | 0x67 | 0x57 => match opcode {
+            0x4f | 0x7b | 0x67 | 0x57 | 0x7C => match opcode {
                 0x4f => self.reg.c = self.reg.a,
                 0x7b => self.reg.a = self.reg.e,
                 0x67 => self.reg.h = self.reg.a,
                 0x57 => self.reg.d = self.reg.a,
+                0x7C => self.reg.a = self.reg.h,
                 _ => {}
             },
             // LD r,d8
@@ -333,6 +337,11 @@ impl Cpu {
                 self.reg.a = self.opc_rl(self.reg.a);
                 self.reg.set_flag(Z, false);
             }
+            // SUB R
+            0x90 => match opcode {
+                0x90 => self.opc_sub(self.reg.b),
+                _ => {}
+            },
             // XOR A
             0xAF => {
                 self.opc_xor(self.reg.a);
@@ -409,6 +418,15 @@ impl Cpu {
         self.reg.set_flag(N, true);
         self.reg.set_flag(H, a & 0x0f < value & 0x0f);
         self.reg.set_flag(C, a < value);
+    }
+    fn opc_sub(&mut self, value: u8) {
+        let a = self.reg.a;
+        let r = a.wrapping_sub(value);
+        self.reg.set_flag(Z, r == 0);
+        self.reg.set_flag(N, true);
+        self.reg.set_flag(H, a & 0x0f < value & 0x0f);
+        self.reg.set_flag(C, (a as u16) < (value as u16));
+        self.reg.a = r;
     }
     fn opc_cb_bit(&mut self, bit: u8, r: u8) {
         let z = ((1 << bit) & r) == 0;
