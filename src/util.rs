@@ -1,5 +1,6 @@
 use std::io::{self, Read};
 use std::fs::File;
+use std::path::Path;
 
 
 pub fn u16_from_2u8(low: u8, high: u8) -> u16 {
@@ -17,7 +18,7 @@ pub fn check_bit(value: u8, index: u8) -> bool {
   value & bit == bit
 }
 
-pub fn read_rom(path: &str) -> io::Result<Vec<u8>> {
+pub fn read_rom(path: impl AsRef<Path>) -> io::Result<Vec<u8>> {
   let mut rom = vec![];
   let mut file = File::open(path)?;
   file.read_to_end(&mut rom)?;

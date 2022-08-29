@@ -1,5 +1,8 @@
 use crate::memory::Memory;
 use crate::util::{read_rom, u16_from_2u8, u8u8_from_u16};
+use std::fs::File;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use MBC1Mode::{Ram, Rom};
 
 pub struct RoomBlank {
@@ -104,6 +107,10 @@ impl Memory for RoomBlank {
     }
 }
 
+pub trait Stable {
+    fn save(&self) {}
+}
+
 struct RomOnly {
     rom: Vec<u8>,
 }
@@ -130,9 +137,10 @@ struct MBC1 {
     rom_blank_bit: u8,
     ram_blank_bit: u8,
     ram_enable: bool,
+    save_path: PathBuf,
 }
 impl MBC1 {
-    fn new(rom: Vec<u8>, ram: Vec<u8>) -> Self {
+    fn new(rom: Vec<u8>, ram: Vec<u8>, path: impl AsRef<Path>) -> Self {
         MBC1 {
             mode: Rom,
             rom,
@@ -140,6 +148,7 @@ impl MBC1 {
             rom_blank_bit: 0b00001,
             ram_blank_bit: 0b00,
             ram_enable: false,
+            save_path: PathBuf::from(path.as_ref()),
         }
     }
     fn get_rom_blank_index(&self) -> u8 {
@@ -167,22 +176,20 @@ impl Memory for MBC1 {
         let rom_blank_index = self.get_rom_blank_index();
         let ram_blank_index = self.get_ram_blank_index();
         match index {
-            0..=0x3FFF => {
-                if self.ram_enable {
-                    self.rom[index as usize]
-                } else {
-                    0x00
-                }
-            }
+            0..=0x3FFF => self.rom[index as usize],
             0x4000..=0x7FFF => {
                 let rom_index =
                     rom_blank_index as usize * 0x4000 as usize + (index - 0x4000) as usize;
                 self.rom[rom_index]
             }
             0xA000..=0xBFFF => {
-                let ram_index =
-                    ram_blank_index as usize * 0x2000 as usize + (index - 0xA000) as usize;
-                self.ram[ram_index]
+                if self.ram_enable {
+                    let ram_index =
+                        ram_blank_index as usize * 0x2000 as usize + (index - 0xA000) as usize;
+                    self.ram[ram_index]
+                } else {
+                    0x00
+                }
             }
             _ => panic!("out range of MC1"),
         }
@@ -194,6 +201,7 @@ impl Memory for MBC1 {
                     self.ram_enable = true;
                 } else {
                     self.ram_enable = false;
+                    self.save();
                 }
             }
             0x2000..=0x3FFF => {
@@ -217,5 +225,93 @@ impl Memory for MBC1 {
             }
             _ => panic!("out range of MC1"),
         }
+    }
+}
+impl Stable for MBC1 {
+    fn save(&self) {
+        if self.save_path.to_str().unwrap().is_empty() {
+            return;
+        }
+        File::create(self.save_path.clone())
+            .and_then(|mut file| file.write_all(&self.ram))
+            .unwrap();
+    }
+}
+
+struct MBC2 {
+    rom: Vec<u8>,
+    ram: Vec<u8>,
+    rom_blank: u8,
+    ram_enable: bool,
+    save_path: PathBuf,
+}
+impl MBC2 {
+    fn new(rom: Vec<u8>, ram: Vec<u8>, path: impl AsRef<Path>) -> Self {
+        MBC2 {
+            rom,
+            ram,
+            rom_blank: 1,
+            ram_enable: false,
+            save_path: PathBuf::from(path.as_ref()),
+        }
+    }
+}
+impl Memory for MBC2 {
+    fn get(&self, index: u16) -> u8 {
+        match index {
+            0..=0x3FFF => self.rom[index as usize],
+            0x4000..=0x7FFF => {
+                let rom_index =
+                    self.rom_blank as usize * 0x4000 as usize + (index - 0x4000) as usize;
+                self.rom[rom_index]
+            }
+            0xA000..=0xA1FF => self.ram[index as usize],
+            0xA200..=0xBFFF => {
+                if self.ram_enable {
+                    let ram_index = 0xA000 + (index - 0xA000 - 1) % 0x01FF;
+                    self.ram[ram_index as usize]
+                } else {
+                    0x00
+                }
+            }
+            _ => panic!("out range of MC1"),
+        }
+    }
+    fn set(&mut self, index: u16, value: u8) {
+        match index {
+            0x0000..=0x3FFF => {
+                let bit8 = index & 0x100 >> 8;
+                if bit8 == 0 {
+                    if value & 0x0A == 0x0A {
+                        self.ram_enable = true;
+                    } else {
+                        self.ram_enable = false;
+                        self.save();
+                    }
+                } else {
+                    if value != 0 {
+                        self.rom_blank = value;
+                    }
+                }
+            }
+            0x4000..=0x7FFF => {}
+            0xA000..=0xBFFF => {
+                if self.ram_enable {
+                    let ram_index = 0xA000 + (index - 0xA000 - 1) % 0x01FF;
+                    self.ram[ram_index as usize] = value;
+                }
+            }
+            _ => panic!("out range of MC1"),
+        }
+    }
+}
+impl Stable for MBC2 {
+    fn save(&self) {
+        if self.save_path.to_str().unwrap().is_empty() {
+            return;
+        }
+        File::create(self.save_path.clone())
+            .and_then(|mut file| file.write_all(&self.ram))
+            .unwrap();
     }
 }
