@@ -26,12 +26,11 @@ impl Memory for MemoryBlock {
         }
         self.memory[(index - self.start) as usize]
     }
-    fn set(&mut self, index: u16, value: u8) -> bool {
+    fn set(&mut self, index: u16, value: u8) {
         if index < self.start || index > self.end {
-            return false;
+            return;
         }
         self.memory[(index - self.start) as usize] = value;
-        true
     }
 }
 
@@ -54,7 +53,7 @@ impl Memory for Mmu {
             0x8000..=0xFFFF => self.other.get(index),
         }
     }
-    fn set(&mut self, index: u16, value: u8) -> bool {
+    fn set(&mut self, index: u16, value: u8) {
         match index {
             0x0000..=0x7FFF => self.room_blank.set(index, value),
             0x8000..=0xFFFF => self.other.set(index, value),
@@ -66,7 +65,7 @@ impl Memory for Mmu {
             0x8000..=0xFFFF => self.other.get_word(index),
         }
     }
-    fn set_word(&mut self, index: u16, value: u16) -> bool {
+    fn set_word(&mut self, index: u16, value: u16) {
         match index {
             0x0000..=0x7FFF => self.room_blank.set_word(index, value),
             0x8000..=0xFFFF => self.other.set_word(index, value),
