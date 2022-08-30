@@ -3,6 +3,7 @@ use crate::util::{read_rom, u16_from_2u8, u8u8_from_u16};
 use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 use MBC1Mode::{Ram, Rom};
 
 pub struct RoomBlank {
@@ -197,7 +198,7 @@ impl Memory for MBC1 {
     fn set(&mut self, index: u16, value: u8) {
         match index {
             0x0000..=0x1FFF => {
-                if value & 0x0A == 0x0A {
+                if value & 0x0F == 0x0A {
                     self.ram_enable = true;
                 } else {
                     self.ram_enable = false;
@@ -265,7 +266,13 @@ impl Memory for MBC2 {
                     self.rom_blank as usize * 0x4000 as usize + (index - 0x4000) as usize;
                 self.rom[rom_index]
             }
-            0xA000..=0xA1FF => self.ram[index as usize],
+            0xA000..=0xA1FF => {
+                if self.ram_enable {
+                    self.ram[index as usize]
+                } else {
+                    0x00
+                }
+            }
             0xA200..=0xBFFF => {
                 if self.ram_enable {
                     let ram_index = 0xA000 + (index - 0xA000 - 1) % 0x01FF;
@@ -282,7 +289,7 @@ impl Memory for MBC2 {
             0x0000..=0x3FFF => {
                 let bit8 = index & 0x100 >> 8;
                 if bit8 == 0 {
-                    if value & 0x0A == 0x0A {
+                    if value & 0x0F == 0x0A {
                         self.ram_enable = true;
                     } else {
                         self.ram_enable = false;
@@ -310,6 +317,200 @@ impl Stable for MBC2 {
         if self.save_path.to_str().unwrap().is_empty() {
             return;
         }
+        File::create(self.save_path.clone())
+            .and_then(|mut file| file.write_all(&self.ram))
+            .unwrap();
+    }
+}
+
+struct MBC3RTC {
+    s: u8,
+    m: u8,
+    h: u8,
+    dl: u8,
+    dh: u8,
+    zero: u64,
+    save_path: PathBuf,
+}
+impl MBC3RTC {
+    fn new(path: impl AsRef<Path>) -> Self {
+        let zero = match std::fs::read(&path) {
+            Ok(file) => {
+                let mut tmp: [u8; 8] = [0; 8];
+                tmp.copy_from_slice(&file);
+                u64::from_be_bytes(tmp)
+            }
+            Err(_) => SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        };
+        Self {
+            s: 0,
+            m: 0,
+            h: 0,
+            dl: 0,
+            dh: 0,
+            zero,
+            save_path: PathBuf::from(path.as_ref()),
+        }
+    }
+    fn latch_clock(&mut self) {
+        let time = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let duration = time - self.zero;
+        self.s = (duration % 60) as u8;
+        self.m = ((duration / 60) % 60) as u8;
+        self.h = ((duration / 3600) % 24) as u8;
+        let day = duration / (3600 * 24);
+        self.dl = (day % 256) as u8;
+        match day {
+            0x0000..=0x00FF => {}
+            0x0100..=0x01FF => {
+                self.dh |= 1;
+            }
+            _ => {
+                self.dh |= 1;
+                self.dh |= 8;
+            }
+        };
+    }
+}
+impl Memory for MBC3RTC {
+    fn get(&self, index: u16) -> u8 {
+        match index {
+            0x08 => self.s,
+            0x09 => self.m,
+            0x0A => self.h,
+            0x0B => self.dl,
+            0x0C => self.dh,
+            _ => panic!("MBC3RTC get out of range {:04x}", index),
+        }
+    }
+    fn set(&mut self, index: u16, value: u8) {
+        match index {
+            0x08 => self.s = value,
+            0x09 => self.m = value,
+            0x0A => self.h = value,
+            0x0B => self.dl = value,
+            0x0C => self.dh = value,
+            _ => panic!("MBC3RTC set out of range {:04x}", index),
+        }
+    }
+}
+impl Stable for MBC3RTC {
+    fn save(&self) {
+        if self.save_path.to_str().unwrap().is_empty() {
+            return;
+        }
+        File::create(self.save_path.clone())
+            .and_then(|mut file| file.write_all(&self.zero.to_be_bytes()))
+            .unwrap();
+    }
+}
+struct MBC3 {
+    rtc: MBC3RTC,
+    rom: Vec<u8>,
+    ram: Vec<u8>,
+    rom_blank: u8,
+    ram_blank: u8,
+    ram_enable: bool,
+    last_write_value: u8,
+    save_path: PathBuf,
+}
+impl MBC3 {
+    fn new(
+        rom: Vec<u8>,
+        ram: Vec<u8>,
+        ram_path: impl AsRef<Path>,
+        rtc_path: impl AsRef<Path>,
+    ) -> Self {
+        MBC3 {
+            rtc: MBC3RTC::new(rtc_path),
+            rom,
+            ram,
+            rom_blank: 1,
+            ram_blank: 0,
+            ram_enable: false,
+            last_write_value: 0x01,
+            save_path: PathBuf::from(ram_path.as_ref()),
+        }
+    }
+}
+impl Memory for MBC3 {
+    fn get(&self, index: u16) -> u8 {
+        match index {
+            0..=0x3FFF => self.rom[index as usize],
+            0x4000..=0x7FFF => {
+                let rom_index =
+                    self.rom_blank as usize * 0x4000 as usize + (index - 0x4000) as usize;
+                self.rom[rom_index]
+            }
+            0xA000..=0xBFFF => {
+                if self.ram_enable {
+                    if self.ram_blank <= 0x03 {
+                        let ram_index =
+                            self.ram_blank as usize * 0x2000 as usize + (index - 0xA000) as usize;
+                        self.ram[ram_index]
+                    } else {
+                        self.rtc.get(self.ram_blank as u16)
+                    }
+                } else {
+                    0x00
+                }
+            }
+            _ => panic!("out range of MC1"),
+        }
+    }
+    fn set(&mut self, index: u16, value: u8) {
+        match index {
+            0x0000..=0x1FFF => {
+                if value & 0x0F == 0x0A {
+                    self.ram_enable = true;
+                } else {
+                    self.ram_enable = false;
+                    self.save();
+                }
+            }
+            0x2000..=0x3FFF => {
+                self.rom_blank = value & 0x7F;
+                if self.rom_blank == 0x00 {
+                    self.rom_blank = 0x01;
+                }
+            }
+            0x4000..=0x5FFF => {
+                self.ram_blank = value;
+            }
+            0x6000..=0x7FFF => {
+                if self.last_write_value == 0x00 && value == 0x01 {
+                    self.rtc.latch_clock();
+                }
+                self.last_write_value = value;
+            }
+            0xA000..=0xBFFF => {
+                if self.ram_enable {
+                    if self.ram_blank <= 0x03 {
+                        let ram_blank_index = self.ram_blank;
+                        let ram_index =
+                            ram_blank_index as usize * 0x2000 as usize + (index - 0xA000) as usize;
+                        self.ram[ram_index] = value;
+                    } else {
+                        self.rtc.set(self.ram_blank as u16, value);
+                    }
+                }
+            }
+            _ => panic!("out range of MC1"),
+        }
+    }
+}
+impl Stable for MBC3 {
+    fn save(&self) {
+        if self.save_path.to_str().unwrap().is_empty() {
+            return;
+        }
+        self.rtc.save();
         File::create(self.save_path.clone())
             .and_then(|mut file| file.write_all(&self.ram))
             .unwrap();
