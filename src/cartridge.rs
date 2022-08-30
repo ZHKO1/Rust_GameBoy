@@ -1,112 +1,93 @@
 use crate::memory::Memory;
-use crate::util::{read_rom, u16_from_2u8, u8u8_from_u16};
+use crate::util::{read_ram, read_rom};
 use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use MBC1Mode::{Ram, Rom};
 
-pub struct RoomBlank {
-    rom: [u8; 0x8000],
-    boot_rom: [u8; 0x100],
-    start: u16,
-    end: u16,
-    is_boot_rom: bool,
+pub fn open(path: impl AsRef<Path>) -> Box<dyn Cartridge> {
+    let rom = read_rom(&path).unwrap();
+    if rom.len() < 0x150 {
+        panic!("rom.len()={} < 0x150", rom.len());
+    }
+    let ram_size = get_ram_size(rom[0x0149 as usize]);
+    let save_path = PathBuf::from(path.as_ref()).with_extension("sav");
+    let rtc_path = PathBuf::from(path.as_ref()).with_extension("rtc");
+    let cart: Box<dyn Cartridge> = match rom[0x0147 as usize] {
+        0x00 => Box::new(RomOnly::new(rom)),
+        0x01 => Box::new(MBC1::new(rom, vec![0; ram_size], "")),
+        0x02 => Box::new(MBC1::new(rom, vec![0; ram_size], "")),
+        0x03 => {
+            let ram = read_ram(&save_path.clone(), ram_size);
+            Box::new(MBC1::new(rom, ram, save_path))
+        }
+        0x05 => {
+            let ram_size = 512;
+            Box::new(MBC2::new(rom, vec![0; ram_size], ""))
+        }
+        0x06 => {
+            let ram_size = 512;
+            let ram = read_ram(&save_path.clone(), ram_size);
+            Box::new(MBC2::new(rom, ram, save_path))
+        }
+        0x0F => Box::new(MBC3::new(rom, vec![0; ram_size], save_path, rtc_path)),
+        0x010 => {
+            let ram = read_ram(&save_path.clone(), ram_size);
+            Box::new(MBC3::new(rom, ram, save_path, rtc_path))
+        }
+        0x011 => Box::new(MBC3::new(rom, vec![0; ram_size], "", "")),
+        0x012 => Box::new(MBC3::new(rom, vec![0; ram_size], "", "")),
+        0x013 => {
+            let ram = read_ram(&save_path.clone(), ram_size);
+            Box::new(MBC3::new(rom, ram, save_path, ""))
+        }
+        0x019 => Box::new(MBC5::new(rom, vec![0; ram_size], "")),
+        0x01A => Box::new(MBC5::new(rom, vec![0; ram_size], "")),
+        0x01B => {
+            let ram = read_ram(&save_path.clone(), ram_size);
+            Box::new(MBC5::new(rom, ram, save_path))
+        }
+        _ => panic!("unkown cartridge type"),
+    };
+    rog::println!("the cart title is {}", cart.title());
+    cart
 }
 
-impl RoomBlank {
-    pub fn new() -> Self {
-        let start = 0;
-        let end = 0x7FFF;
-        let mut room_blank = RoomBlank {
-            start,
-            end,
-            rom: [0xFF; 0x8000],
-            boot_rom: [0; 0x100],
-            is_boot_rom: true,
+fn get_ram_size(code: u8) -> usize {
+    let result = match code {
+        0x00 => 0,
+        0x02 => 8,
+        0x03 => 32,
+        0x04 => 128,
+        0x05 => 128,
+        _ => panic!("get_ram_size failed"),
+    };
+    result * 1024
+}
+
+pub trait Cartridge: Stable + Memory {
+    fn title(&self) -> String {
+        let mut result = String::new();
+        let start = 0x0134;
+        let end = match self.get(0x0143) {
+            0x80 => 0x013E,
+            _ => 0x0143,
         };
-        let boot_rom = read_rom("./tests/DMG_ROM.bin");
-        for (index, data) in boot_rom.unwrap().iter().enumerate() {
-            room_blank.boot_rom[index] = *data;
+        for index in start..=end {
+            match self.get(index) {
+                0 => break,
+                v => result.push(v as char),
+            }
         }
-        room_blank
+        result
     }
 }
-impl Memory for RoomBlank {
-    fn get(&self, index: u16) -> u8 {
-        match index {
-            0x0000..=0x00ff => {
-                if self.is_boot_rom == true {
-                    self.boot_rom[(index - self.start) as usize]
-                } else {
-                    self.rom[(index - self.start) as usize]
-                }
-            }
-            0x0100..=0x7FFF => self.rom[(index - self.start) as usize],
-            _ => {
-                return 0xFF;
-            }
-        }
-    }
-    fn set(&mut self, index: u16, value: u8) {
-        match index {
-            0x0000..=0x00ff => {
-                if self.is_boot_rom == true {
-                    self.boot_rom[(index - self.start) as usize] = value;
-                } else {
-                    self.rom[(index - self.start) as usize] = value;
-                }
-            }
-            0x0100..=0x7FFF => {
-                self.rom[(index - self.start) as usize] = value;
-            }
-            _ => {}
-        };
-    }
-    fn get_word(&self, index: u16) -> u16 {
-        match index {
-            0x0000..=0x00ff => {
-                if self.is_boot_rom == true {
-                    u16_from_2u8(
-                        self.boot_rom[(index - self.start) as usize],
-                        self.boot_rom[(index - self.start + 1) as usize],
-                    )
-                } else {
-                    u16_from_2u8(
-                        self.rom[(index - self.start) as usize],
-                        self.rom[(index - self.start + 1) as usize],
-                    )
-                }
-            }
-            0x0100..=0x7FFF => u16_from_2u8(
-                self.rom[(index - self.start) as usize],
-                self.rom[(index - self.start + 1) as usize],
-            ),
-            _ => {
-                return 0xFFFF;
-            }
-        }
-    }
-    fn set_word(&mut self, index: u16, value: u16) {
-        let (value_low, value_high) = u8u8_from_u16(value);
-        match index {
-            0x0000..=0x00ff => {
-                if self.is_boot_rom == true {
-                    self.boot_rom[(index - self.start) as usize] = value_low;
-                    self.boot_rom[(index - self.start + 1) as usize] = value_high;
-                } else {
-                    self.rom[(index - self.start) as usize] = value_low;
-                    self.rom[(index - self.start + 1) as usize] = value_high;
-                }
-            }
-            0x0100..=0x7FFF => {
-                self.rom[(index - self.start) as usize] = value_low;
-                self.rom[(index - self.start + 1) as usize] = value_high;
-            }
-            _ => {}
-        };
-    }
-}
+impl Cartridge for RomOnly {}
+impl Cartridge for MBC1 {}
+impl Cartridge for MBC2 {}
+impl Cartridge for MBC3 {}
+impl Cartridge for MBC5 {}
 
 pub trait Stable {
     fn save(&self) {}
@@ -125,6 +106,9 @@ impl Memory for RomOnly {
         self.rom[index as usize]
     }
     fn set(&mut self, index: u16, value: u8) {}
+}
+impl Stable for RomOnly {
+    fn save(&self) {}
 }
 
 enum MBC1Mode {
@@ -281,7 +265,7 @@ impl Memory for MBC2 {
                     0x00
                 }
             }
-            _ => panic!("out range of MC1"),
+            _ => panic!("out range of MC2"),
         }
     }
     fn set(&mut self, index: u16, value: u8) {
@@ -308,7 +292,7 @@ impl Memory for MBC2 {
                     self.ram[ram_index as usize] = value;
                 }
             }
-            _ => panic!("out range of MC1"),
+            _ => panic!("out range of MC2"),
         }
     }
 }
@@ -461,7 +445,7 @@ impl Memory for MBC3 {
                     0x00
                 }
             }
-            _ => panic!("out range of MC1"),
+            _ => panic!("out range of MC3"),
         }
     }
     fn set(&mut self, index: u16, value: u8) {
@@ -501,7 +485,7 @@ impl Memory for MBC3 {
                     }
                 }
             }
-            _ => panic!("out range of MC1"),
+            _ => panic!("out range of MC3"),
         }
     }
 }
@@ -515,4 +499,99 @@ impl Stable for MBC3 {
             .and_then(|mut file| file.write_all(&self.ram))
             .unwrap();
     }
+}
+
+struct MBC5 {
+    rom: Vec<u8>,
+    ram: Vec<u8>,
+    rom_blank_low_bit: u8,
+    rom_blank_high_bit: u8,
+    ram_blank: u8,
+    ram_enable: bool,
+    save_path: PathBuf,
+}
+impl MBC5 {
+    fn new(rom: Vec<u8>, ram: Vec<u8>, path: impl AsRef<Path>) -> Self {
+        Self {
+            rom,
+            ram,
+            rom_blank_low_bit: 0b00000001,
+            rom_blank_high_bit: 0b0,
+            ram_blank: 0,
+            ram_enable: false,
+            save_path: PathBuf::from(path.as_ref()),
+        }
+    }
+    fn get_rom_blank_index(&self) -> u8 {
+        self.rom_blank_high_bit << 8 + self.rom_blank_low_bit
+    }
+}
+impl Memory for MBC5 {
+    fn get(&self, index: u16) -> u8 {
+        match index {
+            0..=0x3FFF => self.rom[index as usize],
+            0x4000..=0x7FFF => {
+                let rom_blank_index = self.get_rom_blank_index();
+                let rom_index =
+                    rom_blank_index as usize * 0x4000 as usize + (index - 0x4000) as usize;
+                self.rom[rom_index]
+            }
+            0xA000..=0xBFFF => {
+                if self.ram_enable {
+                    let ram_index =
+                        self.ram_blank as usize * 0x2000 as usize + (index - 0xA000) as usize;
+                    self.ram[ram_index]
+                } else {
+                    0x00
+                }
+            }
+            _ => panic!("out range of MC5"),
+        }
+    }
+    fn set(&mut self, index: u16, value: u8) {
+        match index {
+            0x0000..=0x1FFF => {
+                if value & 0x0F == 0x0A {
+                    self.ram_enable = true;
+                } else {
+                    self.ram_enable = false;
+                    self.save();
+                }
+            }
+            0x2000..=0x2FFF => {
+                self.rom_blank_low_bit = value;
+            }
+            0x3000..=0x3FFF => {
+                self.rom_blank_high_bit = value & 0x01;
+            }
+            0x4000..=0x5FFF => {
+                self.ram_blank = value;
+            }
+            0x6000..=0x7FFF => {}
+            0xA000..=0xBFFF => {
+                if self.ram_enable {
+                    let ram_blank_index = self.ram_blank;
+                    let ram_index =
+                        ram_blank_index as usize * 0x2000 as usize + (index - 0xA000) as usize;
+                    self.ram[ram_index] = value;
+                }
+            }
+            _ => panic!("out range of MC5"),
+        }
+    }
+}
+impl Stable for MBC5 {
+    fn save(&self) {
+        if self.save_path.to_str().unwrap().is_empty() {
+            return;
+        }
+        File::create(self.save_path.clone())
+            .and_then(|mut file| file.write_all(&self.ram))
+            .unwrap();
+    }
+}
+
+#[test]
+fn test(){
+    open("tests/SML.gb");
 }

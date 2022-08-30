@@ -439,11 +439,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rog"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa06de27450130fb2df9bcc45c3790666afe290f0502aac8a3410e4e95e1e6d2"
+
+[[package]]
 name = "rust_gameboy"
 version = "0.1.0"
 dependencies = [
  "chrono",
  "minifb",
+ "rog",
 ]
 
 [[package]]

@@ -5,7 +5,7 @@ use rust_gameboy::mmu::Mmu;
 use rust_gameboy::ppu::PPU;
 use std::{cell::RefCell, rc::Rc};
 fn main() {
-    let mmu = Mmu::new();
+    let mmu = Mmu::new("tests/SML.gb");
     let rc_refcell_mmu = Rc::new(RefCell::new(mmu));
     let mut cpu = Cpu::new(rc_refcell_mmu.clone());
     let mut ppu = PPU::new(rc_refcell_mmu.clone());
