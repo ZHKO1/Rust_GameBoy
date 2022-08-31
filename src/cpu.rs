@@ -172,12 +172,25 @@ impl Cpu {
         let mut cb_opcode = 0;
         let mut is_jump = false;
         match opcode {
+            // NOP
+            0x00 => {}
             // ADD (address)
-            0x86 => match opcode {
+            // ADD A r
+            // ADD A n
+            // ADD A (HL)
+            // ADD HL rr
+            // ADD SP dd
+            0x86 | 0x09 | 0x19 => match opcode {
                 0x86 => {
                     let hl = self.reg.get_hl();
                     let hl_v = self.memory.borrow().get(hl);
                     self.opc_add(hl_v);
+                }
+                0x09 => {
+                    self.opc_add_hl(self.reg.get_bc());
+                }
+                0x19 => {
+                    self.opc_add_hl(self.reg.get_de());
                 }
                 _ => {}
             },
@@ -220,23 +233,36 @@ impl Cpu {
                 };
             }
             // DEC r
-            0x05 | 0x3D | 0x0D | 0x15 | 0x1D => match opcode {
+            0x05 | 0x3D | 0x0D | 0x15 | 0x1D | 0x25 => match opcode {
                 0x3D => self.reg.a = self.opc_dec(self.reg.a),
                 0x05 => self.reg.b = self.opc_dec(self.reg.b),
                 0x0D => self.reg.c = self.opc_dec(self.reg.c),
                 0x15 => self.reg.d = self.opc_dec(self.reg.d),
                 0x1D => self.reg.e = self.opc_dec(self.reg.e),
+                0x25 => self.reg.h = self.opc_dec(self.reg.h),
                 _ => {}
             },
+            // DEC rr
+            0x0B => {
+                let bc = self.reg.get_bc();
+                self.reg.set_bc(bc.wrapping_sub(1));
+            }
+            0x1B => {
+                let de = self.reg.get_de();
+                self.reg.set_de(de.wrapping_sub(1));
+            }
             // INC r
-            0x0c | 0x04 | 0x24 => match opcode {
+            0x0c | 0x04 | 0x14 | 0x24 | 0x1c => match opcode {
                 0x04 => self.reg.b = self.opc_inc(self.reg.b),
                 0x0c => self.reg.c = self.opc_inc(self.reg.c),
+                0x14 => self.reg.d = self.opc_inc(self.reg.d),
+                0x1c => self.reg.e = self.opc_inc(self.reg.e),
                 0x24 => self.reg.h = self.opc_inc(self.reg.h),
                 _ => {}
             },
             // INC rr
-            0x23 | 0x13 => match opcode {
+            0x03 | 0x23 | 0x13 => match opcode {
+                0x03 => self.reg.set_bc(self.reg.get_bc() + 1),
                 0x23 => self.reg.set_hl(self.reg.get_hl() + 1),
                 0x13 => self.reg.set_de(self.reg.get_de() + 1),
                 _ => {}
@@ -261,8 +287,10 @@ impl Cpu {
                 }
             }
             // LD (address), A
-            0x77 | 0xEA | 0xE0 | 0xE2 => {
+            0x02 | 0x12 | 0x77 | 0xEA | 0xE0 | 0xE2 => {
                 let address = match opcode {
+                    0x02 => self.reg.get_bc(),
+                    0x12 => self.reg.get_de(),
                     0x77 => self.reg.get_hl(),
                     0xEA => self.imm_word(),
                     0xE0 => (0xFF00 | (self.imm() as u16)),
@@ -274,13 +302,17 @@ impl Cpu {
                 let a = self.reg.a;
                 self.memory.borrow_mut().set(address, a);
             }
-            // LD A,(DE)
+            // LD A,(address)
             0x1a => {
                 let de = self.reg.get_de();
                 let de_v = self.memory.borrow_mut().get(de);
                 self.reg.a = de_v;
             }
-            // LD A,(address)
+            0x0a => {
+                let bc = self.reg.get_bc();
+                let bc_v = self.memory.borrow_mut().get(bc);
+                self.reg.a = bc_v;
+            }
             0xF0 => {
                 let address = 0xFF00 | (self.imm() as u16);
                 let value = self.memory.borrow_mut().get(address);
@@ -298,7 +330,7 @@ impl Cpu {
                 _ => {}
             },
             // LD r,d8
-            0x3E | 0x06 | 0x0E | 0x16 | 0x1E | 0x2E => {
+            0x3E | 0x06 | 0x0E | 0x16 | 0x1E | 0x26 | 0x2E => {
                 let d8 = self.imm();
                 match opcode {
                     0x3E => self.reg.a = d8,
@@ -306,19 +338,26 @@ impl Cpu {
                     0x0E => self.reg.c = d8,
                     0x16 => self.reg.d = d8,
                     0x1E => self.reg.e = d8,
+                    0x26 => self.reg.h = d8,
                     0x2E => self.reg.l = d8,
                     _ => {}
                 }
             }
             // LD rr,d16
-            0x11 | 0x21 | 0x31 => {
+            0x01 | 0x11 | 0x21 | 0x31 => {
                 let d16 = self.imm_word();
                 match opcode {
+                    0x01 => self.reg.set_bc(d16),
                     0x11 => self.reg.set_de(d16),
                     0x21 => self.reg.set_hl(d16),
                     0x31 => self.reg.sp = d16,
                     _ => {}
                 }
+            }
+            // LD (a16) SP
+            0x08 => {
+                let a16 = self.imm_word();
+                self.memory.borrow_mut().set_word(a16, self.reg.sp);
             }
             // LD (HL+),A
             0x22 => {
@@ -354,6 +393,21 @@ impl Cpu {
                 self.reg.a = self.opc_rl(self.reg.a);
                 self.reg.set_flag(Z, false);
             }
+            // RLCA
+            0x07 => {
+                self.reg.a = self.opc_rlc(self.reg.a);
+                self.reg.set_flag(Z, false);
+            }
+            // RRA
+            0x1F => {
+                self.reg.a = self.opc_rr(self.reg.a);
+                self.reg.set_flag(Z, false);
+            }
+            // RRCA
+            0x0F => {
+                self.reg.a = self.opc_rrc(self.reg.a);
+                self.reg.set_flag(Z, false);
+            }
             // SUB R
             0x90 => match opcode {
                 0x90 => self.opc_sub(self.reg.b),
@@ -362,6 +416,42 @@ impl Cpu {
             // XOR A
             0xAF => {
                 self.opc_xor(self.reg.a);
+            }
+            // STOP 0
+            0x10 => {
+                let _ = self.imm();
+                // TODO
+                // Halt CPU & LCD display until button pressed
+            }
+            // DDA
+            0x27 => {
+                let a = self.reg.a;
+                let a_low = a & 0x0F;
+                let a_high = a & 0xF0 >> 4;
+                // carry from low 4 bit
+                let h = self.reg.get_flag(H);
+                // carry from high 4 bit
+                let c = self.reg.get_flag(C);
+                // pre opcode is sub
+                let n = self.reg.get_flag(N);
+                let mut result = a;
+                let mut adjust: u8 = 0;
+                if a_low > 9 || h {
+                    adjust |= 0x06;
+                }
+                if a_high > 9 || c {
+                    adjust |= 0x60;
+                }
+                if n {
+                    result = result.wrapping_sub(adjust);
+                } else {
+                    result = result.wrapping_add(adjust);
+                }
+                self.reg.a = result;
+                self.reg.set_flag(Z, self.reg.a == 0);
+                self.reg.set_flag(H, false);
+                // 这里C Flag应该是指高四位BCD是否进行了加减6的操作，虽然我是不明白意义何在
+                self.reg.set_flag(C, a_high > 9 || c);
             }
             _ => {
                 println!("{:02x}  PC:{:04x}", opcode, self.reg.pc - 1);
@@ -403,6 +493,14 @@ impl Cpu {
         self.reg.set_flag(C, a as u16 + value as u16 > 0xff);
         self.reg.a = result;
     }
+    fn opc_add_hl(&mut self, value: u16) {
+        let hl = self.reg.get_hl();
+        let result = hl.wrapping_add(value);
+        self.reg.set_flag(N, false);
+        self.reg.set_flag(H, hl & 0xFFF + value & 0xFFF > 0x0FFF);
+        self.reg.set_flag(C, hl as u32 + value as u32 > 0xFFFF);
+        self.reg.set_hl(result);
+    }
     fn opc_xor(&mut self, n: u8) {
         self.reg.a ^= n;
         self.reg.set_flag(Z, self.reg.a == 0);
@@ -432,6 +530,34 @@ impl Cpu {
         let c = value >> 7 == 0x01;
         let old_c = self.reg.get_flag(C);
         let result = value << 1 | u8::from(old_c);
+        self.reg.set_flag(Z, result == 0);
+        self.reg.set_flag(N, false);
+        self.reg.set_flag(H, false);
+        self.reg.set_flag(C, c);
+        result
+    }
+    fn opc_rlc(&mut self, value: u8) -> u8 {
+        let c = value >> 7 == 0x01;
+        let result = value << 1 | u8::from(c);
+        self.reg.set_flag(Z, result == 0);
+        self.reg.set_flag(N, false);
+        self.reg.set_flag(H, false);
+        self.reg.set_flag(C, c);
+        result
+    }
+    fn opc_rr(&mut self, value: u8) -> u8 {
+        let old_c = self.reg.get_flag(C);
+        let c = value & 0x01 == 0x01;
+        let result = u8::from(old_c) << 7 | value >> 1;
+        self.reg.set_flag(Z, result == 0);
+        self.reg.set_flag(N, false);
+        self.reg.set_flag(H, false);
+        self.reg.set_flag(C, c);
+        result
+    }
+    fn opc_rrc(&mut self, value: u8) -> u8 {
+        let c = value & 0x01 == 0x01;
+        let result = u8::from(c) << 7 | value >> 1;
         self.reg.set_flag(Z, result == 0);
         self.reg.set_flag(N, false);
         self.reg.set_flag(H, false);
