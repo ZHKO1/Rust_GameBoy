@@ -172,6 +172,15 @@ impl Cpu {
         let mut cb_opcode = 0;
         let mut is_jump = false;
         match opcode {
+            // ADD (address)
+            0x86 => match opcode {
+                0x86 => {
+                    let hl = self.reg.get_hl();
+                    let hl_v = self.memory.borrow().get(hl);
+                    self.opc_add(hl_v);
+                }
+                _ => {}
+            },
             // PREFIX CB
             0xCB => {
                 cb_opcode = self.imm();
@@ -278,12 +287,14 @@ impl Cpu {
                 self.reg.a = value;
             }
             // LD r,r
-            0x4f | 0x7b | 0x67 | 0x57 | 0x7C => match opcode {
+            0x4f | 0x7b | 0x67 | 0x57 | 0x7C | 0x78 | 0x7D => match opcode {
                 0x4f => self.reg.c = self.reg.a,
                 0x7b => self.reg.a = self.reg.e,
                 0x67 => self.reg.h = self.reg.a,
                 0x57 => self.reg.d = self.reg.a,
                 0x7C => self.reg.a = self.reg.h,
+                0x78 => self.reg.a = self.reg.b,
+                0x7D => self.reg.a = self.reg.l,
                 _ => {}
             },
             // LD r,d8
@@ -382,6 +393,15 @@ impl Cpu {
         } else {
             OP_CYCLES[opcode as usize] + ecycle
         }
+    }
+    fn opc_add(&mut self, value: u8) {
+        let a = self.reg.a;
+        let result = a.wrapping_add(value);
+        self.reg.set_flag(Z, result == 0);
+        self.reg.set_flag(N, false);
+        self.reg.set_flag(H, a & 0x0f + value & 0x0f > 0x0f);
+        self.reg.set_flag(C, a as u16 + value as u16 > 0xff);
+        self.reg.a = result;
     }
     fn opc_xor(&mut self, n: u8) {
         self.reg.a ^= n;

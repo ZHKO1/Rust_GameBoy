@@ -17,14 +17,14 @@ pub fn check_bit(value: u8, index: u8) -> bool {
     value & bit == bit
 }
 
-pub fn read_rom(path: &impl AsRef<Path>) -> io::Result<Vec<u8>> {
+pub fn read_rom(path: impl AsRef<Path>) -> io::Result<Vec<u8>> {
     let mut rom = vec![];
     let mut file = File::open(path)?;
     file.read_to_end(&mut rom)?;
     Ok(rom)
 }
 
-pub fn read_ram(path: &impl AsRef<Path>, ram_size: usize) -> Vec<u8> {
+pub fn read_ram(path: impl AsRef<Path>, ram_size: usize) -> Vec<u8> {
     let mut ram = vec![0; ram_size];
     let result = File::open(path);
     match result {

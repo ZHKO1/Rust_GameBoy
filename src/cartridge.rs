@@ -7,7 +7,7 @@ use std::time::SystemTime;
 use MBC1Mode::{Ram, Rom};
 
 pub fn open(path: impl AsRef<Path>) -> Box<dyn Cartridge> {
-    let rom = read_rom(&path).unwrap();
+    let rom = read_rom(path.as_ref()).unwrap();
     if rom.len() < 0x150 {
         panic!("rom.len()={} < 0x150", rom.len());
     }
@@ -19,7 +19,7 @@ pub fn open(path: impl AsRef<Path>) -> Box<dyn Cartridge> {
         0x01 => Box::new(MBC1::new(rom, vec![0; ram_size], "")),
         0x02 => Box::new(MBC1::new(rom, vec![0; ram_size], "")),
         0x03 => {
-            let ram = read_ram(&save_path.clone(), ram_size);
+            let ram = read_ram(save_path.clone(), ram_size);
             Box::new(MBC1::new(rom, ram, save_path))
         }
         0x05 => {
@@ -28,24 +28,24 @@ pub fn open(path: impl AsRef<Path>) -> Box<dyn Cartridge> {
         }
         0x06 => {
             let ram_size = 512;
-            let ram = read_ram(&save_path.clone(), ram_size);
+            let ram = read_ram(save_path.clone(), ram_size);
             Box::new(MBC2::new(rom, ram, save_path))
         }
         0x0F => Box::new(MBC3::new(rom, vec![0; ram_size], save_path, rtc_path)),
         0x010 => {
-            let ram = read_ram(&save_path.clone(), ram_size);
+            let ram = read_ram(save_path.clone(), ram_size);
             Box::new(MBC3::new(rom, ram, save_path, rtc_path))
         }
         0x011 => Box::new(MBC3::new(rom, vec![0; ram_size], "", "")),
         0x012 => Box::new(MBC3::new(rom, vec![0; ram_size], "", "")),
         0x013 => {
-            let ram = read_ram(&save_path.clone(), ram_size);
+            let ram = read_ram(save_path.clone(), ram_size);
             Box::new(MBC3::new(rom, ram, save_path, ""))
         }
         0x019 => Box::new(MBC5::new(rom, vec![0; ram_size], "")),
         0x01A => Box::new(MBC5::new(rom, vec![0; ram_size], "")),
         0x01B => {
-            let ram = read_ram(&save_path.clone(), ram_size);
+            let ram = read_ram(save_path.clone(), ram_size);
             Box::new(MBC5::new(rom, ram, save_path))
         }
         _ => panic!("unkown cartridge type"),
@@ -105,7 +105,7 @@ impl Memory for RomOnly {
     fn get(&self, index: u16) -> u8 {
         self.rom[index as usize]
     }
-    fn set(&mut self, index: u16, value: u8) {}
+    fn set(&mut self, _: u16, _: u8) {}
 }
 impl Stable for RomOnly {
     fn save(&self) {}
@@ -592,6 +592,8 @@ impl Stable for MBC5 {
 }
 
 #[test]
-fn test(){
-    open("tests/SML.gb");
+fn test() {
+    let cart = open("tests/SML.gb");
+    let opcode = cart.get(0x100);
+    println!("{:02x}", opcode);
 }
