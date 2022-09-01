@@ -210,6 +210,11 @@ impl Cpu {
                 0x87 => self.opc_add(self.reg.a),
                 _ => {}
             },
+            // ADD A D8
+            0xC6 => {
+                let d8 = self.imm();
+                self.opc_add(d8);
+            }
             // ADC A r
             0x88..=0x8F => match opcode {
                 0x88 => self.opc_adc(self.reg.b),
@@ -226,8 +231,14 @@ impl Cpu {
                 0x8F => self.opc_adc(self.reg.a),
                 _ => {}
             },
+            // ADC A D8
+            0xCE => {
+                let d8 = self.imm();
+                self.opc_adc(d8);
+            }
             // PREFIX CB
             0xCB => {
+                // TODO
                 cb_opcode = self.imm();
                 match cb_opcode {
                     0x11 => {
@@ -243,11 +254,29 @@ impl Cpu {
                 }
             }
             // CALL a16
-            0xcd => {
+            0xCD => {
                 let a16 = self.imm_word();
                 let pc = self.reg.pc;
                 self.stack_push(pc);
                 self.reg.pc = a16;
+            }
+            // CALL f,nn
+            0xC4 | 0xCC | 0xD4 | 0xDC => {
+                is_jump = match opcode {
+                    0xC4 => !self.reg.get_flag(Z),
+                    0xCC => self.reg.get_flag(Z),
+                    0xD4 => !self.reg.get_flag(C),
+                    0xDC => self.reg.get_flag(C),
+                    _ => {
+                        panic!("CALL f,nn. But cond?")
+                    }
+                };
+                let a16 = self.imm_word();
+                if is_jump {
+                    let pc = self.reg.pc;
+                    self.stack_push(pc);
+                    self.reg.pc = a16;
+                }
             }
             // CP R
             0xB8..=0xBF => match opcode {
@@ -342,13 +371,39 @@ impl Cpu {
                     0x30 => !self.reg.get_flag(C),
                     0x38 => self.reg.get_flag(C),
                     _ => {
-                        panic!("JR NZ,r8. But cond?")
+                        panic!("JR cond,address. But cond?")
                     }
                 };
                 let r8 = self.imm() as i8;
                 if is_jump {
                     self.opc_jr(r8);
                 }
+            }
+            // JP NN
+            0xC3 => {
+                let r16 = self.imm_word();
+                self.opc_jp(r16);
+            }
+            // JP cond,address
+            0xC2 | 0xCA | 0xD2 | 0xDA => {
+                is_jump = match opcode {
+                    0xC2 => !self.reg.get_flag(Z),
+                    0xCA => self.reg.get_flag(Z),
+                    0xD2 => !self.reg.get_flag(C),
+                    0xDA => self.reg.get_flag(C),
+                    _ => {
+                        panic!("JP cond,address. But cond?")
+                    }
+                };
+                let r16 = self.imm_word();
+                if is_jump {
+                    self.opc_jp(r16);
+                }
+            }
+            // JP (HL)
+            0xE9 => {
+                let hl = self.reg.get_hl();
+                self.opc_jp(hl);
             }
             // LD (address), A
             0x02 | 0x12 | 0x77 | 0xEA | 0xE0 | 0xE2 => {
@@ -553,10 +608,50 @@ impl Cpu {
                 let bc = self.stack_pop();
                 self.reg.set_bc(bc);
             }
+            0xD1 => {
+                let de = self.stack_pop();
+                self.reg.set_de(de);
+            }
+            0xE1 => {
+                let hl = self.stack_pop();
+                self.reg.set_hl(hl);
+            }
+            0xF1 => {
+                let af = self.stack_pop();
+                self.reg.set_af(af);
+            }
             // PUSH nn
             0xC5 => {
                 let bc = self.reg.get_bc();
                 self.stack_push(bc);
+            }
+            0xD5 => {
+                let de = self.reg.get_de();
+                self.stack_push(de);
+            }
+            0xE5 => {
+                let hl = self.reg.get_hl();
+                self.stack_push(hl);
+            }
+            0xF5 => {
+                let af = self.reg.get_af();
+                self.stack_push(af);
+            }
+            // RET f
+            0xC0 | 0xC8 | 0xD0 | 0xD8 => {
+                is_jump = match opcode {
+                    0xC0 => !self.reg.get_flag(Z),
+                    0xC8 => self.reg.get_flag(Z),
+                    0xD0 => !self.reg.get_flag(C),
+                    0xD8 => self.reg.get_flag(C),
+                    _ => {
+                        panic!("RET f. But cond?")
+                    }
+                };
+                let pc = self.stack_pop();
+                if is_jump {
+                    self.reg.pc = pc;
+                }
             }
             // RET
             0xC9 => {
@@ -722,6 +817,26 @@ impl Cpu {
             0x76 => {
                 // TODO
             }
+            // RST n
+            0xC7 | 0xCF | 0xD7 | 0xDF | 0xE7 | 0xEF | 0xF7 | 0xFF => {
+                let address = match opcode {
+                    0xC7 => 0x00,
+                    0xCF => 0x08,
+                    0xD7 => 0x10,
+                    0xDF => 0x18,
+                    0xE7 => 0x20,
+                    0xEF => 0x28,
+                    0xF7 => 0x30,
+                    0xFF => 0x38,
+                    _ => panic!("RST unknown n"),
+                };
+                let pc = self.reg.pc;
+                self.stack_push(pc);
+                self.reg.pc = address;
+            }
+            0xD3 | 0xDB | 0xDD | 0xE3 | 0xE4 | 0xEB | 0xEC | 0xED | 0xF4 | 0xFC | 0xFD => {
+                panic!("this opcode not exist {:02x}", opcode);
+            }
             _ => {
                 println!("{:02x}  PC:{:04x}", opcode, self.reg.pc - 1);
                 panic!("unkown opcode");
@@ -814,7 +929,9 @@ impl Cpu {
     }
     fn opc_jr(&mut self, r8: i8) {
         self.reg.pc = self.reg.pc.wrapping_add(r8 as u16);
-        // println!("jump to {:04x}", self.reg.pc);
+    }
+    fn opc_jp(&mut self, r16: u16) {
+        self.reg.pc = r16;
     }
     fn opc_inc(&mut self, reg: u8) -> u8 {
         let result = reg.wrapping_add(1);
