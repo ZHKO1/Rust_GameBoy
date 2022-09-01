@@ -215,6 +215,19 @@ impl Cpu {
                 let d8 = self.imm();
                 self.opc_add(d8);
             }
+            // ADD SP,r8
+            0xE8 => {
+                let sp = self.reg.sp;
+                let r8 = self.imm() as i8;
+                let value = (r8 as i16) as u16;
+                self.reg.set_flag(Z, false);
+                self.reg.set_flag(N, false);
+                self.reg
+                    .set_flag(H, (sp & 0x000f) + (value & 0x000f) > 0x000f);
+                self.reg
+                    .set_flag(C, (sp & 0x00ff) + (value & 0x00ff) > 0x00ff);
+                self.reg.sp = sp.wrapping_add(value);
+            }
             // ADC A r
             0x88..=0x8F => match opcode {
                 0x88 => self.opc_adc(self.reg.b),
@@ -427,6 +440,12 @@ impl Cpu {
                 let de_v = self.memory.borrow_mut().get(de);
                 self.reg.a = de_v;
             }
+            0xF2 => {
+                let c = self.reg.c;
+                let address = 0xFF00 | (c as u16);
+                let address_v = self.memory.borrow_mut().get(address);
+                self.reg.a = address_v;
+            }
             0x0a => {
                 let bc = self.reg.get_bc();
                 let bc_v = self.memory.borrow_mut().get(bc);
@@ -436,6 +455,11 @@ impl Cpu {
                 let address = 0xFF00 | (self.imm() as u16);
                 let value = self.memory.borrow_mut().get(address);
                 self.reg.a = value;
+            }
+            0xFA => {
+                let a16 = self.imm_word();
+                let a16_v = self.memory.borrow().get(a16);
+                self.reg.a = a16_v;
             }
             // LD r,r
             0x40..=0x4f | 0x50..=0x5f | 0x60..=0x6f | 0x70..=0x75 | 0x77..=0x7F => match opcode {
@@ -572,6 +596,10 @@ impl Cpu {
                     _ => {}
                 }
             }
+            0xF9 => {
+                let hl = self.reg.get_hl();
+                self.reg.sp = hl;
+            }
             // LD (a16) SP
             0x08 => {
                 let a16 = self.imm_word();
@@ -602,6 +630,18 @@ impl Cpu {
                 let hl = self.reg.get_hl();
                 self.reg.a = self.memory.borrow().get(hl);
                 self.reg.set_hl(hl.wrapping_sub(1));
+            }
+            // LD HL,SP+r8
+            0xF8 => {
+                let r8 = self.imm() as i8;
+                let r8_ = (r8 as i16) as u16;
+                let sp = self.reg.sp;
+                let address = sp.wrapping_add(r8_);
+                self.reg.set_hl(address);
+                self.reg.set_flag(Z, false);
+                self.reg.set_flag(N, false);
+                self.reg.set_flag(H, sp & 0x0f + r8_ & 0x0f > 0x0f);
+                self.reg.set_flag(C, sp & 0xff + r8_ & 0xff > 0xff);
             }
             // POP rr
             0xC1 => {
@@ -694,6 +734,10 @@ impl Cpu {
                 0x97 => self.opc_sub(self.reg.a),
                 _ => {}
             },
+            0xD6 => {
+                let d8 = self.imm();
+                self.opc_sub(d8);
+            }
             // SBC R
             0x98..=0x9F => match opcode {
                 0x98 => self.opc_sbc(self.reg.b),
@@ -710,6 +754,11 @@ impl Cpu {
                 0x9F => self.opc_sbc(self.reg.a),
                 _ => {}
             },
+            // SBC D8
+            0xDE => {
+                let d8 = self.imm();
+                self.opc_sbc(d8);
+            }
             // AND R
             0xA0..=0xA7 => match opcode {
                 0xA0 => self.opc_and(self.reg.b),
@@ -726,6 +775,10 @@ impl Cpu {
                 0xA7 => self.opc_and(self.reg.a),
                 _ => {}
             },
+            0xE6 => {
+                let d8 = self.imm();
+                self.opc_and(d8);
+            }
             // XOR R
             0xA8..=0xAF => match opcode {
                 0xA8 => self.opc_xor(self.reg.b),
@@ -742,6 +795,11 @@ impl Cpu {
                 0xAF => self.opc_xor(self.reg.a),
                 _ => {}
             },
+            // XOR D8
+            0xEE => {
+                let d8 = self.imm();
+                self.opc_xor(d8);
+            }
             // OR R
             0xB0..=0xB7 => match opcode {
                 0xB0 => self.opc_or(self.reg.b),
@@ -758,6 +816,10 @@ impl Cpu {
                 0xB7 => self.opc_or(self.reg.a),
                 _ => {}
             },
+            0xF6 => {
+                let d8 = self.imm();
+                self.opc_or(d8);
+            }
             // STOP 0
             0x10 => {
                 let _ = self.imm();
@@ -834,12 +896,23 @@ impl Cpu {
                 self.stack_push(pc);
                 self.reg.pc = address;
             }
+            // RETI
+            0xD9 => {
+                let d16 = self.stack_pop();
+                self.reg.pc = d16;
+                // TODO
+                // how to enable interrupts
+            }
+            // DI
+            0xF3 => {
+                // TODO
+            }
+            // EI
+            0xFB => {
+                // TODO
+            }
             0xD3 | 0xDB | 0xDD | 0xE3 | 0xE4 | 0xEB | 0xEC | 0xED | 0xF4 | 0xFC | 0xFD => {
                 panic!("this opcode not exist {:02x}", opcode);
-            }
-            _ => {
-                println!("{:02x}  PC:{:04x}", opcode, self.reg.pc - 1);
-                panic!("unkown opcode");
             }
         };
         let mut ecycle = 0;
