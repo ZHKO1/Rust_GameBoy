@@ -137,8 +137,9 @@ impl MBC1 {
         }
     }
     fn get_rom_blank_index(&self) -> u8 {
+        let ram_blank_bit = self.ram_blank_bit << 5;
         let result = match self.mode {
-            Rom => self.ram_blank_bit << 5 + self.rom_blank_bit,
+            Rom => ram_blank_bit | (self.rom_blank_bit & 0x1f),
             Ram => self.rom_blank_bit,
         };
         match result {

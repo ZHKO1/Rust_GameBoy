@@ -149,7 +149,7 @@ impl Fetcher {
             let pixel_bit = 8 - buffer_index - 1;
             let pixel_low = self.tile_data_low & (1 << pixel_bit) == (1 << pixel_bit);
             let pixel_high = self.tile_dada_high & (1 << pixel_bit) == (1 << pixel_bit);
-            let pvalue = (pixel_low as u8) + (pixel_high as u8) << 1;
+            let pvalue = (pixel_low as u8) | ((pixel_high as u8 ) << 1);
             result.push(Pixel { ptype: BG, pvalue });
         }
         result
@@ -298,7 +298,7 @@ impl PPU {
             2 => (bg_palette & 0b110000) >> 4,
             3 => (bg_palette & 0b11000000) >> 6,
             _ => {
-                panic!("color index is out of range")
+                panic!("color index is out of range {}", index);
             }
         };
         match color_value {
@@ -307,7 +307,7 @@ impl PPU {
             2 => Color::DARK_GRAY as u32,
             3 => Color::BLACK_GRAY as u32,
             _ => {
-                panic!("color_value is out of range");
+                panic!("color_value is out of range {}", color_value);
             }
         }
     }

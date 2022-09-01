@@ -251,19 +251,447 @@ impl Cpu {
             }
             // PREFIX CB
             0xCB => {
-                // TODO
                 cb_opcode = self.imm();
                 match cb_opcode {
-                    0x11 => {
-                        self.reg.c = self.opc_rl(self.reg.c);
+                    0x00 => self.reg.b = self.opc_rlc(self.reg.b),
+                    0x01 => self.reg.c = self.opc_rlc(self.reg.c),
+                    0x02 => self.reg.d = self.opc_rlc(self.reg.d),
+                    0x03 => self.reg.e = self.opc_rlc(self.reg.e),
+                    0x04 => self.reg.h = self.opc_rlc(self.reg.h),
+                    0x05 => self.reg.l = self.opc_rlc(self.reg.l),
+                    0x06 => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_rlc(hl_v);
+                        self.memory.borrow_mut().set(hl, r);
                     }
-                    0x7c => {
-                        self.opc_cb_bit(7, self.reg.h);
+                    0x07 => self.reg.a = self.opc_rlc(self.reg.a),
+
+                    0x08 => self.reg.b = self.opc_rrc(self.reg.b),
+                    0x09 => self.reg.c = self.opc_rrc(self.reg.c),
+                    0x0A => self.reg.d = self.opc_rrc(self.reg.d),
+                    0x0B => self.reg.e = self.opc_rrc(self.reg.e),
+                    0x0C => self.reg.h = self.opc_rrc(self.reg.h),
+                    0x0D => self.reg.l = self.opc_rrc(self.reg.l),
+                    0x0E => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_rrc(hl_v);
+                        self.memory.borrow_mut().set(hl, r);
                     }
-                    _ => {
-                        println!("{:02x}", cb_opcode);
-                        panic!("unkown opcode CB");
+                    0x0F => self.reg.a = self.opc_rrc(self.reg.a),
+
+                    0x10 => self.reg.b = self.opc_rl(self.reg.b),
+                    0x11 => self.reg.c = self.opc_rl(self.reg.c),
+                    0x12 => self.reg.d = self.opc_rl(self.reg.d),
+                    0x13 => self.reg.e = self.opc_rl(self.reg.e),
+                    0x14 => self.reg.h = self.opc_rl(self.reg.h),
+                    0x15 => self.reg.l = self.opc_rl(self.reg.l),
+                    0x16 => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_rl(hl_v);
+                        self.memory.borrow_mut().set(hl, r);
                     }
+                    0x17 => self.reg.a = self.opc_rl(self.reg.a),
+
+                    0x18 => self.reg.b = self.opc_rr(self.reg.b),
+                    0x19 => self.reg.c = self.opc_rr(self.reg.c),
+                    0x1A => self.reg.d = self.opc_rr(self.reg.d),
+                    0x1B => self.reg.e = self.opc_rr(self.reg.e),
+                    0x1C => self.reg.h = self.opc_rr(self.reg.h),
+                    0x1D => self.reg.l = self.opc_rr(self.reg.l),
+                    0x1E => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_rr(hl_v);
+                        self.memory.borrow_mut().set(hl, r);
+                    }
+                    0x1F => self.reg.a = self.opc_rr(self.reg.a),
+
+                    0x20 => self.reg.b = self.opc_sla(self.reg.b),
+                    0x21 => self.reg.c = self.opc_sla(self.reg.c),
+                    0x22 => self.reg.d = self.opc_sla(self.reg.d),
+                    0x23 => self.reg.e = self.opc_sla(self.reg.e),
+                    0x24 => self.reg.h = self.opc_sla(self.reg.h),
+                    0x25 => self.reg.l = self.opc_sla(self.reg.l),
+                    0x26 => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_sla(hl_v);
+                        self.memory.borrow_mut().set(hl, r);
+                    }
+                    0x27 => self.reg.a = self.opc_sla(self.reg.a),
+
+                    0x28 => self.reg.b = self.opc_sra(self.reg.b),
+                    0x29 => self.reg.c = self.opc_sra(self.reg.c),
+                    0x2A => self.reg.d = self.opc_sra(self.reg.d),
+                    0x2B => self.reg.e = self.opc_sra(self.reg.e),
+                    0x2C => self.reg.h = self.opc_sra(self.reg.h),
+                    0x2D => self.reg.l = self.opc_sra(self.reg.l),
+                    0x2E => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_sra(hl_v);
+                        self.memory.borrow_mut().set(hl, r);
+                    }
+                    0x2F => self.reg.a = self.opc_sra(self.reg.a),
+
+                    0x30 => self.reg.b = self.opc_swap(self.reg.b),
+                    0x31 => self.reg.c = self.opc_swap(self.reg.c),
+                    0x32 => self.reg.d = self.opc_swap(self.reg.d),
+                    0x33 => self.reg.e = self.opc_swap(self.reg.e),
+                    0x34 => self.reg.h = self.opc_swap(self.reg.h),
+                    0x35 => self.reg.l = self.opc_swap(self.reg.l),
+                    0x36 => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_swap(hl_v);
+                        self.memory.borrow_mut().set(hl, r);
+                    }
+                    0x37 => self.reg.a = self.opc_swap(self.reg.a),
+
+                    0x38 => self.reg.b = self.opc_srl(self.reg.b),
+                    0x39 => self.reg.c = self.opc_srl(self.reg.c),
+                    0x3A => self.reg.d = self.opc_srl(self.reg.d),
+                    0x3B => self.reg.e = self.opc_srl(self.reg.e),
+                    0x3C => self.reg.h = self.opc_srl(self.reg.h),
+                    0x3D => self.reg.l = self.opc_srl(self.reg.l),
+                    0x3E => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_srl(hl_v);
+                        self.memory.borrow_mut().set(hl, r);
+                    }
+                    0x3F => self.reg.a = self.opc_srl(self.reg.a),
+
+                    0x40 => self.opc_bit(0, self.reg.b),
+                    0x41 => self.opc_bit(0, self.reg.c),
+                    0x42 => self.opc_bit(0, self.reg.d),
+                    0x43 => self.opc_bit(0, self.reg.e),
+                    0x44 => self.opc_bit(0, self.reg.h),
+                    0x45 => self.opc_bit(0, self.reg.l),
+                    0x46 => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        self.opc_bit(0, hl_v);
+                    }
+                    0x47 => self.opc_bit(0, self.reg.a),
+
+                    0x48 => self.opc_bit(1, self.reg.b),
+                    0x49 => self.opc_bit(1, self.reg.c),
+                    0x4A => self.opc_bit(1, self.reg.d),
+                    0x4B => self.opc_bit(1, self.reg.e),
+                    0x4C => self.opc_bit(1, self.reg.h),
+                    0x4D => self.opc_bit(1, self.reg.l),
+                    0x4E => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        self.opc_bit(1, hl_v);
+                    }
+                    0x4F => self.opc_bit(1, self.reg.a),
+
+                    0x50 => self.opc_bit(2, self.reg.b),
+                    0x51 => self.opc_bit(2, self.reg.c),
+                    0x52 => self.opc_bit(2, self.reg.d),
+                    0x53 => self.opc_bit(2, self.reg.e),
+                    0x54 => self.opc_bit(2, self.reg.h),
+                    0x55 => self.opc_bit(2, self.reg.l),
+                    0x56 => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        self.opc_bit(2, hl_v);
+                    }
+                    0x57 => self.opc_bit(2, self.reg.a),
+
+                    0x58 => self.opc_bit(3, self.reg.b),
+                    0x59 => self.opc_bit(3, self.reg.c),
+                    0x5A => self.opc_bit(3, self.reg.d),
+                    0x5B => self.opc_bit(3, self.reg.e),
+                    0x5C => self.opc_bit(3, self.reg.h),
+                    0x5D => self.opc_bit(3, self.reg.l),
+                    0x5E => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        self.opc_bit(3, hl_v);
+                    }
+                    0x5F => self.opc_bit(3, self.reg.a),
+
+                    0x60 => self.opc_bit(4, self.reg.b),
+                    0x61 => self.opc_bit(4, self.reg.c),
+                    0x62 => self.opc_bit(4, self.reg.d),
+                    0x63 => self.opc_bit(4, self.reg.e),
+                    0x64 => self.opc_bit(4, self.reg.h),
+                    0x65 => self.opc_bit(4, self.reg.l),
+                    0x66 => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        self.opc_bit(4, hl_v);
+                    }
+                    0x67 => self.opc_bit(4, self.reg.a),
+
+                    0x68 => self.opc_bit(5, self.reg.b),
+                    0x69 => self.opc_bit(5, self.reg.c),
+                    0x6A => self.opc_bit(5, self.reg.d),
+                    0x6B => self.opc_bit(5, self.reg.e),
+                    0x6C => self.opc_bit(5, self.reg.h),
+                    0x6D => self.opc_bit(5, self.reg.l),
+                    0x6E => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        self.opc_bit(5, hl_v);
+                    }
+                    0x6F => self.opc_bit(5, self.reg.a),
+
+                    0x70 => self.opc_bit(6, self.reg.b),
+                    0x71 => self.opc_bit(6, self.reg.c),
+                    0x72 => self.opc_bit(6, self.reg.d),
+                    0x73 => self.opc_bit(6, self.reg.e),
+                    0x74 => self.opc_bit(6, self.reg.h),
+                    0x75 => self.opc_bit(6, self.reg.l),
+                    0x76 => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        self.opc_bit(6, hl_v);
+                    }
+                    0x77 => self.opc_bit(6, self.reg.a),
+
+                    0x78 => self.opc_bit(7, self.reg.b),
+                    0x79 => self.opc_bit(7, self.reg.c),
+                    0x7A => self.opc_bit(7, self.reg.d),
+                    0x7B => self.opc_bit(7, self.reg.e),
+                    0x7C => self.opc_bit(7, self.reg.h),
+                    0x7D => self.opc_bit(7, self.reg.l),
+                    0x7E => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        self.opc_bit(7, hl_v);
+                    }
+                    0x7F => self.opc_bit(7, self.reg.a),
+
+                    0x80 => self.reg.b = self.opc_res(0, self.reg.b),
+                    0x81 => self.reg.c = self.opc_res(0, self.reg.c),
+                    0x82 => self.reg.d = self.opc_res(0, self.reg.d),
+                    0x83 => self.reg.e = self.opc_res(0, self.reg.e),
+                    0x84 => self.reg.h = self.opc_res(0, self.reg.h),
+                    0x85 => self.reg.l = self.opc_res(0, self.reg.l),
+                    0x86 => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_res(0, hl_v);
+                        self.memory.borrow_mut().set(hl, r);
+                    }
+                    0x87 => self.reg.a = self.opc_res(0, self.reg.a),
+
+                    0x88 => self.reg.b = self.opc_res(1, self.reg.b),
+                    0x89 => self.reg.c = self.opc_res(1, self.reg.c),
+                    0x8A => self.reg.d = self.opc_res(1, self.reg.d),
+                    0x8B => self.reg.e = self.opc_res(1, self.reg.e),
+                    0x8C => self.reg.h = self.opc_res(1, self.reg.h),
+                    0x8D => self.reg.l = self.opc_res(1, self.reg.l),
+                    0x8E => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_res(1, hl_v);
+                        self.memory.borrow_mut().set(hl, r);
+                    }
+                    0x8F => self.reg.a = self.opc_res(1, self.reg.a),
+
+                    0x90 => self.reg.b = self.opc_res(2, self.reg.b),
+                    0x91 => self.reg.c = self.opc_res(2, self.reg.c),
+                    0x92 => self.reg.d = self.opc_res(2, self.reg.d),
+                    0x93 => self.reg.e = self.opc_res(2, self.reg.e),
+                    0x94 => self.reg.h = self.opc_res(2, self.reg.h),
+                    0x95 => self.reg.l = self.opc_res(2, self.reg.l),
+                    0x96 => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_res(2, hl_v);
+                        self.memory.borrow_mut().set(hl, r);
+                    }
+                    0x97 => self.reg.a = self.opc_res(2, self.reg.a),
+
+                    0x98 => self.reg.b = self.opc_res(3, self.reg.b),
+                    0x99 => self.reg.c = self.opc_res(3, self.reg.c),
+                    0x9A => self.reg.d = self.opc_res(3, self.reg.d),
+                    0x9B => self.reg.e = self.opc_res(3, self.reg.e),
+                    0x9C => self.reg.h = self.opc_res(3, self.reg.h),
+                    0x9D => self.reg.l = self.opc_res(3, self.reg.l),
+                    0x9E => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_res(3, hl_v);
+                        self.memory.borrow_mut().set(hl, r);
+                    }
+                    0x9F => self.reg.a = self.opc_res(3, self.reg.a),
+
+                    0xA0 => self.reg.b = self.opc_res(4, self.reg.b),
+                    0xA1 => self.reg.c = self.opc_res(4, self.reg.c),
+                    0xA2 => self.reg.d = self.opc_res(4, self.reg.d),
+                    0xA3 => self.reg.e = self.opc_res(4, self.reg.e),
+                    0xA4 => self.reg.h = self.opc_res(4, self.reg.h),
+                    0xA5 => self.reg.l = self.opc_res(4, self.reg.l),
+                    0xA6 => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_res(4, hl_v);
+                        self.memory.borrow_mut().set(hl, r);
+                    }
+                    0xA7 => self.reg.a = self.opc_res(4, self.reg.a),
+
+                    0xA8 => self.reg.b = self.opc_res(5, self.reg.b),
+                    0xA9 => self.reg.c = self.opc_res(5, self.reg.c),
+                    0xAA => self.reg.d = self.opc_res(5, self.reg.d),
+                    0xAB => self.reg.e = self.opc_res(5, self.reg.e),
+                    0xAC => self.reg.h = self.opc_res(5, self.reg.h),
+                    0xAD => self.reg.l = self.opc_res(5, self.reg.l),
+                    0xAE => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_res(5, hl_v);
+                        self.memory.borrow_mut().set(hl, r);
+                    }
+                    0xAF => self.reg.a = self.opc_res(5, self.reg.a),
+
+                    0xB0 => self.reg.b = self.opc_res(6, self.reg.b),
+                    0xB1 => self.reg.c = self.opc_res(6, self.reg.c),
+                    0xB2 => self.reg.d = self.opc_res(6, self.reg.d),
+                    0xB3 => self.reg.e = self.opc_res(6, self.reg.e),
+                    0xB4 => self.reg.h = self.opc_res(6, self.reg.h),
+                    0xB5 => self.reg.l = self.opc_res(6, self.reg.l),
+                    0xB6 => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_res(6, hl_v);
+                        self.memory.borrow_mut().set(hl, r);
+                    }
+                    0xB7 => self.reg.a = self.opc_res(6, self.reg.a),
+
+                    0xB8 => self.reg.b = self.opc_res(7, self.reg.b),
+                    0xB9 => self.reg.c = self.opc_res(7, self.reg.c),
+                    0xBA => self.reg.d = self.opc_res(7, self.reg.d),
+                    0xBB => self.reg.e = self.opc_res(7, self.reg.e),
+                    0xBC => self.reg.h = self.opc_res(7, self.reg.h),
+                    0xBD => self.reg.l = self.opc_res(7, self.reg.l),
+                    0xBE => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_res(7, hl_v);
+                        self.memory.borrow_mut().set(hl, r);
+                    }
+                    0xBF => self.reg.a = self.opc_res(7, self.reg.a),
+
+                    0xC0 => self.reg.b = self.opc_set(0, self.reg.b),
+                    0xC1 => self.reg.c = self.opc_set(0, self.reg.c),
+                    0xC2 => self.reg.d = self.opc_set(0, self.reg.d),
+                    0xC3 => self.reg.e = self.opc_set(0, self.reg.e),
+                    0xC4 => self.reg.h = self.opc_set(0, self.reg.h),
+                    0xC5 => self.reg.l = self.opc_set(0, self.reg.l),
+                    0xC6 => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_set(0, hl_v);
+                        self.memory.borrow_mut().set(hl, r);
+                    }
+                    0xC7 => self.reg.a = self.opc_set(0, self.reg.a),
+
+                    0xC8 => self.reg.b = self.opc_set(1, self.reg.b),
+                    0xC9 => self.reg.c = self.opc_set(1, self.reg.c),
+                    0xCA => self.reg.d = self.opc_set(1, self.reg.d),
+                    0xCB => self.reg.e = self.opc_set(1, self.reg.e),
+                    0xCC => self.reg.h = self.opc_set(1, self.reg.h),
+                    0xCD => self.reg.l = self.opc_set(1, self.reg.l),
+                    0xCE => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_set(1, hl_v);
+                        self.memory.borrow_mut().set(hl, r);
+                    }
+                    0xCF => self.reg.a = self.opc_set(1, self.reg.a),
+
+                    0xD0 => self.reg.b = self.opc_set(2, self.reg.b),
+                    0xD1 => self.reg.c = self.opc_set(2, self.reg.c),
+                    0xD2 => self.reg.d = self.opc_set(2, self.reg.d),
+                    0xD3 => self.reg.e = self.opc_set(2, self.reg.e),
+                    0xD4 => self.reg.h = self.opc_set(2, self.reg.h),
+                    0xD5 => self.reg.l = self.opc_set(2, self.reg.l),
+                    0xD6 => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_set(2, hl_v);
+                        self.memory.borrow_mut().set(hl, r);
+                    }
+                    0xD7 => self.reg.a = self.opc_set(2, self.reg.a),
+
+                    0xD8 => self.reg.b = self.opc_set(3, self.reg.b),
+                    0xD9 => self.reg.c = self.opc_set(3, self.reg.c),
+                    0xDA => self.reg.d = self.opc_set(3, self.reg.d),
+                    0xDB => self.reg.e = self.opc_set(3, self.reg.e),
+                    0xDC => self.reg.h = self.opc_set(3, self.reg.h),
+                    0xDD => self.reg.l = self.opc_set(3, self.reg.l),
+                    0xDE => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_set(3, hl_v);
+                        self.memory.borrow_mut().set(hl, r);
+                    }
+                    0xDF => self.reg.a = self.opc_set(3, self.reg.a),
+
+                    0xE0 => self.reg.b = self.opc_set(4, self.reg.b),
+                    0xE1 => self.reg.c = self.opc_set(4, self.reg.c),
+                    0xE2 => self.reg.d = self.opc_set(4, self.reg.d),
+                    0xE3 => self.reg.e = self.opc_set(4, self.reg.e),
+                    0xE4 => self.reg.h = self.opc_set(4, self.reg.h),
+                    0xE5 => self.reg.l = self.opc_set(4, self.reg.l),
+                    0xE6 => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_set(4, hl_v);
+                        self.memory.borrow_mut().set(hl, r);
+                    }
+                    0xE7 => self.reg.a = self.opc_set(4, self.reg.a),
+
+                    0xE8 => self.reg.b = self.opc_set(5, self.reg.b),
+                    0xE9 => self.reg.c = self.opc_set(5, self.reg.c),
+                    0xEA => self.reg.d = self.opc_set(5, self.reg.d),
+                    0xEB => self.reg.e = self.opc_set(5, self.reg.e),
+                    0xEC => self.reg.h = self.opc_set(5, self.reg.h),
+                    0xED => self.reg.l = self.opc_set(5, self.reg.l),
+                    0xEE => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_set(5, hl_v);
+                        self.memory.borrow_mut().set(hl, r);
+                    }
+                    0xEF => self.reg.a = self.opc_set(5, self.reg.a),
+
+                    0xF0 => self.reg.b = self.opc_set(6, self.reg.b),
+                    0xF1 => self.reg.c = self.opc_set(6, self.reg.c),
+                    0xF2 => self.reg.d = self.opc_set(6, self.reg.d),
+                    0xF3 => self.reg.e = self.opc_set(6, self.reg.e),
+                    0xF4 => self.reg.h = self.opc_set(6, self.reg.h),
+                    0xF5 => self.reg.l = self.opc_set(6, self.reg.l),
+                    0xF6 => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_set(6, hl_v);
+                        self.memory.borrow_mut().set(hl, r);
+                    }
+                    0xF7 => self.reg.a = self.opc_set(6, self.reg.a),
+
+                    0xF8 => self.reg.b = self.opc_set(7, self.reg.b),
+                    0xF9 => self.reg.c = self.opc_set(7, self.reg.c),
+                    0xFA => self.reg.d = self.opc_set(7, self.reg.d),
+                    0xFB => self.reg.e = self.opc_set(7, self.reg.e),
+                    0xFC => self.reg.h = self.opc_set(7, self.reg.h),
+                    0xFD => self.reg.l = self.opc_set(7, self.reg.l),
+                    0xFE => {
+                        let hl = self.reg.get_hl();
+                        let hl_v = self.memory.borrow().get(hl);
+                        let r = self.opc_set(7, hl_v);
+                        self.memory.borrow_mut().set(hl, r);
+                    }
+                    0xFF => self.reg.a = self.opc_set(7, self.reg.a),
                 }
             }
             // CALL a16
@@ -1077,11 +1505,57 @@ impl Cpu {
         self.reg.set_flag(C, (a as u16) < value as u16 + c as u16);
         self.reg.a = r;
     }
-    fn opc_cb_bit(&mut self, bit: u8, r: u8) {
+    fn opc_bit(&mut self, bit: u8, r: u8) {
         let z = ((1 << bit) & r) == 0;
         self.reg.set_flag(Z, z);
         self.reg.set_flag(N, false);
         self.reg.set_flag(H, true);
+    }
+    fn opc_sla(&mut self, n: u8) -> u8 {
+        let r = n << 1;
+        let c = n >> 7 == 0x01;
+        self.reg.set_flag(Z, r == 0);
+        self.reg.set_flag(N, false);
+        self.reg.set_flag(H, false);
+        self.reg.set_flag(C, c);
+        r
+    }
+    fn opc_sra(&mut self, n: u8) -> u8 {
+        let c = n & 0x01 == 0x01;
+        let msb = n >> 7;
+        let r = n >> 1 | msb << 7;
+        self.reg.set_flag(Z, r == 0);
+        self.reg.set_flag(N, false);
+        self.reg.set_flag(H, false);
+        self.reg.set_flag(C, c);
+        r
+    }
+    fn opc_swap(&mut self, n: u8) -> u8 {
+        let low = n & 0x0f;
+        let high = n & 0xf0 >> 4;
+        let r = low << 4 | high;
+        self.reg.set_flag(Z, r == 0);
+        self.reg.set_flag(N, false);
+        self.reg.set_flag(H, false);
+        self.reg.set_flag(C, false);
+        r
+    }
+    fn opc_srl(&mut self, n: u8) -> u8 {
+        let r = n >> 1;
+        let c = n & 0x01 == 0x01;
+        self.reg.set_flag(Z, r == 0);
+        self.reg.set_flag(N, false);
+        self.reg.set_flag(H, false);
+        self.reg.set_flag(C, c);
+        r
+    }
+    fn opc_res(&mut self, bit: u8, n: u8) -> u8 {
+        let r = n & !(1 << bit);
+        r
+    }
+    fn opc_set(&mut self, bit: u8, n: u8) -> u8 {
+        let r = n | (1 << bit);
+        r
     }
     fn stack_push(&mut self, value: u16) {
         self.reg.sp = self.reg.sp - 2;
