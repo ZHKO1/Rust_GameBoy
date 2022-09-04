@@ -1,18 +1,33 @@
-// use chrono::*;
-use rust_gameboy::cpu::Cpu;
-use rust_gameboy::display::Display;
-use rust_gameboy::mmu::Mmu;
-use rust_gameboy::ppu::PPU;
-use std::{cell::RefCell, rc::Rc};
+extern crate log;
+extern crate simplelog;
+use rust_gameboy::{display::Display, gameboy::GameBoy};
+use simplelog::*;
+use std::fs::File;
+
 fn main() {
-    let mmu = Mmu::new("tests/SML.gb");
-    let rc_refcell_mmu = Rc::new(RefCell::new(mmu));
-    let mut cpu = Cpu::new(rc_refcell_mmu.clone());
-    let mut ppu = PPU::new(rc_refcell_mmu.clone());
+    CombinedLogger::init(vec![
+        TermLogger::new(
+            LevelFilter::Warn,
+            Config::default(),
+            TerminalMode::Mixed,
+            ColorChoice::Auto,
+        ),
+        WriteLogger::new(
+            LevelFilter::Info,
+            Config::default(),
+            File::create("my_rust_binary.log").unwrap(),
+        ),
+    ])
+    .unwrap();
+
+    let bios_path = "";
+    let rom_path = "tests/01-special.gb";
+    let mut gameboy = GameBoy::new(bios_path, rom_path);
     let mut display = Display::init(160, 144);
     let mut cycle: u32 = 0;
     // let mut start_time = Local::now().time();
     // let mut frames = 0;
+    let mut buffer = vec![0; 160 * 144];
     while display.window.is_open() {
         /*
         if cycle == 0 {
@@ -24,11 +39,11 @@ fn main() {
         }
          */
         cycle += 1;
-        cpu.trick();
-        ppu.trick();
-        let buffer = &ppu.frame_buffer;
+        gameboy.trick();
+        let frame_buffer = gameboy.get_frame_buffer();
         if cycle == 70224 {
-            display.update_with_buffer(&mut buffer.to_vec());
+            buffer.clone_from_slice(frame_buffer);
+            display.update_with_buffer(&mut buffer);
             cycle = 0;
             // frames += 1;
         }

@@ -145,6 +145,10 @@ impl Cpu {
             is_halted: false,
         }
     }
+    pub fn skip_bios(&mut self) {
+        self.reg.pc = 0x0100;
+        self.reg.sp = 0xFFFE;
+    }
     fn interrupt_check_pending(&mut self) -> u8 {
         let m_ie = self.memory.borrow().get(0xFFFF);
         let m_if = self.memory.borrow().get(0xFF0F);

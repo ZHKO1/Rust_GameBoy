@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::vec;
 
 use crate::cartridge::{open, Cartridge};
 use crate::memory::Memory;
@@ -43,17 +44,23 @@ pub struct Mmu {
 }
 
 impl Mmu {
-    pub fn new(path: impl AsRef<Path>) -> Self {
-        let cartridge = open(path);
+    pub fn new(bios_path: impl AsRef<Path>, rom_path: impl AsRef<Path>) -> Self {
+        let cartridge = open(rom_path);
         let other = MemoryBlock::new();
-        let boot_rom = read_rom("tests/DMG_ROM.bin").unwrap();
         let mut boot = [0; 0x100];
-        boot.copy_from_slice(&boot_rom[..0x100]);
-        Mmu {
+        let skip_boot = bios_path.as_ref().to_str().unwrap().is_empty();
+        let mut mmu = Self {
             boot,
             cartridge,
             other,
-        }
+        };
+        if skip_boot {
+            mmu.set(0xFF50, 1);
+        } else {
+            let boot_rom = read_rom(bios_path).unwrap();
+            boot.copy_from_slice(&boot_rom[..0x100]);
+        };
+        mmu
     }
     pub fn is_boot(&self) -> bool {
         let v = self.get(0xFF50);
