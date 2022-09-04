@@ -22,7 +22,7 @@ fn main() {
 
     // let bios_path = "tests/DMG_ROM.bin";
     let bios_path = "";
-    let rom_path = "tests/01-special.gb";
+    let rom_path = "tests/gb-test-roms/cpu_instrs/individual/01-special.gb";
     let mut gameboy = GameBoy::new(bios_path, rom_path);
     let mut display = Display::init(160, 144);
     let mut cycle: u32 = 0;
