@@ -50,7 +50,6 @@ pub fn open(path: impl AsRef<Path>) -> Box<dyn Cartridge> {
         }
         _ => panic!("unkown cartridge type"),
     };
-    rog::println!("the cart title is {}", cart.title());
     cart
 }
 

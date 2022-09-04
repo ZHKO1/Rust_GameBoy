@@ -1,5 +1,6 @@
 use crate::memory::Memory;
-use crate::util::{u16_from_2u8, u8u8_from_u16};
+use crate::util::{check_bit, u16_from_2u8, u8u8_from_u16};
+// use log::info;
 use std::{cell::RefCell, rc::Rc};
 use Flag::{C, H, N, Z};
 
@@ -80,7 +81,7 @@ impl Registers {
     fn set_af(&mut self, value: u16) {
         let (value_low, value_high) = u8u8_from_u16(value);
         self.a = value_high;
-        self.f = value_low;
+        self.f = value_low & 0xF0;
     }
     fn get_af(&self) -> u16 {
         u16_from_2u8(self.f, self.a)
@@ -110,7 +111,7 @@ impl Registers {
         u16_from_2u8(self.l, self.h)
     }
     fn get_flag(&self, flag: Flag) -> bool {
-        self.f & (flag as u8) != 0
+        (self.f & (flag as u8)) != 0
     }
     fn set_flag(&mut self, flag: Flag, value: bool) {
         if value {
@@ -120,11 +121,15 @@ impl Registers {
         }
     }
 }
+
 pub struct Cpu {
     reg: Registers,
     cycles: u32,
     cur_opcode_cycles: u32,
     memory: Rc<RefCell<dyn Memory>>,
+    ime: bool,
+    ime_next: Option<bool>,
+    is_halted: bool,
 }
 
 impl Cpu {
@@ -135,17 +140,84 @@ impl Cpu {
             memory: mmu,
             cycles: 0,
             cur_opcode_cycles: 0,
+            ime: false,
+            ime_next: None,
+            is_halted: false,
         }
     }
-    pub fn run(&mut self) {
-        loop {
-            self.step();
+    fn interrupt_check_pending(&mut self) -> u8 {
+        let m_ie = self.memory.borrow().get(0xFFFF);
+        let m_if = self.memory.borrow().get(0xFF0F);
+        let m_r = m_ie & m_if;
+        m_r & 0x1F
+    }
+    fn interrupt_handle(&mut self, m_r: u8) -> u32 {
+        for index in 0..=4 {
+            let bit = check_bit(m_r, index);
+            if bit {
+                let address: u16 = match index {
+                    0 => 0x0040,
+                    1 => 0x0048,
+                    2 => 0x0050,
+                    3 => 0x0058,
+                    4 => 0x0060,
+                    _ => panic!("index is out of range"),
+                };
+                self.ime = false;
+                let m_if = self.memory.borrow().get(0xFF0F);
+                let m_if = self.opc_res(index, m_if);
+                self.memory.borrow_mut().set(0xFF0F, m_if);
+
+                let a16 = address;
+                let pc = self.reg.pc;
+                self.stack_push(pc);
+                self.reg.pc = a16;
+                return 5;
+            }
+        }
+        return 0;
+    }
+    fn step(&mut self) -> u32 {
+        let interrupts = self.interrupt_check_pending();
+        if self.is_halted {
+            self.step_halt(interrupts) * 4
+        } else {
+            self.step_run(interrupts) * 4
         }
     }
-    pub fn step(&mut self) -> u32 {
-        let opcode = self.imm();
-        let cycles = self.run_opcode(opcode);
-        cycles * 4
+    fn step_halt(&mut self, interrupts: u8) -> u32 {
+        if self.ime {
+            if interrupts > 0 {
+                self.is_halted = false;
+                self.interrupt_handle(interrupts)
+            } else {
+                1
+            }
+        } else {
+            if interrupts > 0 {
+                self.is_halted = false;
+                1
+            } else {
+                1
+            }
+        }
+    }
+    fn step_run(&mut self, interrupts: u8) -> u32 {
+        let ime_next = self.ime_next.clone();
+        let mut cycles = if self.ime {
+            self.interrupt_handle(interrupts)
+        } else {
+            0
+        };
+        if cycles == 0 {
+            let opcode = self.imm();
+            cycles = self.run_opcode(opcode);
+            if let Some(ime) = ime_next {
+                self.ime = ime;
+                self.ime_next = None;
+            }
+        };
+        cycles
     }
     pub fn trick(&mut self) {
         if self.cycles == 0 {
@@ -157,7 +229,7 @@ impl Cpu {
         } else if self.cycles < self.cur_opcode_cycles - 1 {
             self.cycles += 1;
         } else {
-            panic!("NOP or HALT?")
+            panic!("trick error!")
         }
     }
     /*
@@ -168,7 +240,7 @@ impl Cpu {
     CP (HL)            LD (address),A      LD (address),r      PUSH rr           XOR r
     */
     fn run_opcode(&mut self, opcode: u8) -> u32 {
-        // println!("{:02x}  PC:{:04x}", opcode, self.reg.pc - 1);
+        // info!("{:02x}  PC:{:04x}", opcode, self.reg.pc - 1);
         let mut cb_opcode = 0;
         let mut is_jump = false;
         match opcode {
@@ -981,7 +1053,10 @@ impl Cpu {
                     let hl = self.reg.get_hl();
                     self.memory.borrow_mut().set(hl, self.reg.l);
                 }
-                0x77 => self.reg.h = self.reg.a,
+                0x77 => {
+                    let hl = self.reg.get_hl();
+                    self.memory.borrow_mut().set(hl, self.reg.a);
+                }
                 0x78 => self.reg.a = self.reg.b,
                 0x79 => self.reg.a = self.reg.c,
                 0x7A => self.reg.a = self.reg.d,
@@ -1068,8 +1143,8 @@ impl Cpu {
                 self.reg.set_hl(address);
                 self.reg.set_flag(Z, false);
                 self.reg.set_flag(N, false);
-                self.reg.set_flag(H, sp & 0x0f + r8_ & 0x0f > 0x0f);
-                self.reg.set_flag(C, sp & 0xff + r8_ & 0xff > 0xff);
+                self.reg.set_flag(H, (sp & 0x0f) + (r8_ & 0x0f) > 0x0f);
+                self.reg.set_flag(C, (sp & 0xff) + (r8_ & 0xff) > 0xff);
             }
             // POP rr
             0xC1 => {
@@ -1116,8 +1191,8 @@ impl Cpu {
                         panic!("RET f. But cond?")
                     }
                 };
-                let pc = self.stack_pop();
                 if is_jump {
+                    let pc = self.stack_pop();
                     self.reg.pc = pc;
                 }
             }
@@ -1254,35 +1329,39 @@ impl Cpu {
                 // TODO
                 // Halt CPU & LCD display until button pressed
             }
-            // DDA
+            // DAA
             0x27 => {
-                let a = self.reg.a;
-                let a_low = a & 0x0F;
-                let a_high = a & 0xF0 >> 4;
                 // carry from low 4 bit
                 let h = self.reg.get_flag(H);
                 // carry from high 4 bit
                 let c = self.reg.get_flag(C);
                 // pre opcode is sub
                 let n = self.reg.get_flag(N);
-                let mut result = a;
-                let mut adjust: u8 = 0;
-                if a_low > 9 || h {
-                    adjust |= 0x06;
-                }
-                if a_high > 9 || c {
-                    adjust |= 0x60;
-                }
+
+                let mut result = self.reg.a as u16;
+                let mut adjust = 0 as u16;
                 if n {
+                    if h {
+                        adjust |= 0x06;
+                    }
+                    if c {
+                        adjust |= 0x60;
+                    }
                     result = result.wrapping_sub(adjust);
                 } else {
+                    if (result > 0x99) || c {
+                        adjust |= 0x60;
+                    }
+                    if ((result & 0x0F) > 9) || h {
+                        adjust |= 0x06;
+                    }
                     result = result.wrapping_add(adjust);
                 }
-                self.reg.a = result;
+                self.reg.a = (result & 0xFF) as u8;
                 self.reg.set_flag(Z, self.reg.a == 0);
                 self.reg.set_flag(H, false);
-                // 这里C Flag应该是指高四位BCD是否进行了加减6的操作，虽然我是不明白意义何在
-                self.reg.set_flag(C, a_high > 9 || c);
+                // 这里C Flag 根据 高四位BCD是否进行了加减6的操作而更新
+                self.reg.set_flag(C, adjust >= 0x60);
             }
             // CPL
             0x2F => {
@@ -1305,7 +1384,7 @@ impl Cpu {
             }
             // HALT
             0x76 => {
-                // TODO
+                self.is_halted = true;
             }
             // RST n
             0xC7 | 0xCF | 0xD7 | 0xDF | 0xE7 | 0xEF | 0xF7 | 0xFF => {
@@ -1328,21 +1407,21 @@ impl Cpu {
             0xD9 => {
                 let d16 = self.stack_pop();
                 self.reg.pc = d16;
-                // TODO
-                // how to enable interrupts
+                self.ime = true;
             }
             // DI
             0xF3 => {
-                // TODO
+                self.ime_next = Some(true);
             }
             // EI
             0xFB => {
-                // TODO
+                self.ime_next = Some(false);
             }
             0xD3 | 0xDB | 0xDD | 0xE3 | 0xE4 | 0xEB | 0xEC | 0xED | 0xF4 | 0xFC | 0xFD => {
                 panic!("this opcode not exist {:02x}", opcode);
             }
         };
+
         let mut ecycle = 0;
         if is_jump {
             ecycle = match opcode {
@@ -1376,7 +1455,7 @@ impl Cpu {
         let result = a.wrapping_add(value);
         self.reg.set_flag(Z, result == 0);
         self.reg.set_flag(N, false);
-        self.reg.set_flag(H, a & 0x0f + value & 0x0f > 0x0f);
+        self.reg.set_flag(H, (a & 0x0f) + (value & 0x0f) > 0x0f);
         self.reg.set_flag(C, a as u16 + value as u16 > 0xff);
         self.reg.a = result;
     }
@@ -1387,7 +1466,7 @@ impl Cpu {
         self.reg.set_flag(Z, result == 0);
         self.reg.set_flag(N, false);
         self.reg
-            .set_flag(H, a & 0x0f + value & 0x0f + c & 0x0f > 0x0f);
+            .set_flag(H, (a & 0x0f) + (value & 0x0f) + (c & 0x0f) > 0x0f);
         self.reg
             .set_flag(C, a as u16 + value as u16 + c as u16 > 0xff);
         self.reg.a = result;
@@ -1396,7 +1475,8 @@ impl Cpu {
         let hl = self.reg.get_hl();
         let result = hl.wrapping_add(value);
         self.reg.set_flag(N, false);
-        self.reg.set_flag(H, hl & 0xFFF + value & 0xFFF > 0x0FFF);
+        self.reg
+            .set_flag(H, (hl & 0xFFF) + (value & 0xFFF) > 0x0FFF);
         self.reg.set_flag(C, hl as u32 + value as u32 > 0xFFFF);
         self.reg.set_hl(result);
     }
@@ -1501,7 +1581,7 @@ impl Cpu {
         let r = a.wrapping_sub(value).wrapping_sub(c);
         self.reg.set_flag(Z, r == 0);
         self.reg.set_flag(N, true);
-        self.reg.set_flag(H, a & 0x0F < value & 0x0F + c & 0x0F);
+        self.reg.set_flag(H, a & 0x0F < (value & 0x0F) + (c & 0x0F));
         self.reg.set_flag(C, (a as u16) < value as u16 + c as u16);
         self.reg.a = r;
     }
@@ -1532,8 +1612,8 @@ impl Cpu {
     }
     fn opc_swap(&mut self, n: u8) -> u8 {
         let low = n & 0x0f;
-        let high = n & 0xf0 >> 4;
-        let r = low << 4 | high;
+        let high = (n & 0xf0) >> 4;
+        let r = (low << 4) | high;
         self.reg.set_flag(Z, r == 0);
         self.reg.set_flag(N, false);
         self.reg.set_flag(H, false);

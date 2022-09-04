@@ -11,5 +11,5 @@ gui = ["minifb"]
 
 [dependencies]
 minifb = { version = "0.23", optional = true }
-rog = "=0.1.9"
-chrono = "0.4.22"
+simplelog = "^0.12.0"
+log = "0.4"

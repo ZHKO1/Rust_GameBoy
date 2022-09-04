@@ -11,9 +11,9 @@ const HEIGHT: usize = 144;
 
 enum Color {
     WHITE = 0xE0F8D0,
-    LIGHT_GRAY = 0x88C070,
-    DARK_GRAY = 0x346856,
-    BLACK_GRAY = 0x081820,
+    LightGray = 0x88C070,
+    DarkGray = 0x346856,
+    BlackGray = 0x081820,
 }
 
 pub enum PpuStatus {
@@ -49,7 +49,7 @@ struct Fetcher {
     scy: u8,
     cycles: u16,
     mmu: Rc<RefCell<dyn Memory>>,
-    status: FetcherStatus, // result: Vec<u8>,
+    status: FetcherStatus,
     tile_index: u16,
     tile_data_low: u8,
     tile_dada_high: u8,
@@ -149,7 +149,7 @@ impl Fetcher {
             let pixel_bit = 8 - buffer_index - 1;
             let pixel_low = self.tile_data_low & (1 << pixel_bit) == (1 << pixel_bit);
             let pixel_high = self.tile_dada_high & (1 << pixel_bit) == (1 << pixel_bit);
-            let pvalue = (pixel_low as u8) | ((pixel_high as u8 ) << 1);
+            let pvalue = (pixel_low as u8) | ((pixel_high as u8) << 1);
             result.push(Pixel { ptype: BG, pvalue });
         }
         result
@@ -233,7 +233,7 @@ impl PPU {
             OAMScan => {
                 // println!("OAMScan");
                 if self.cycles == 79 {
-                    self.status = Drawing;
+                    self.set_mode(Drawing);
                     self.ly_buffer = Vec::new();
                     let ly = self.get_ly();
                     self.fifo.init(ly);
@@ -252,7 +252,8 @@ impl PPU {
                         }
                         self.ly_buffer.clear();
                         self.fifo.clear();
-                        self.status = HBlank;
+                        self.set_mode(HBlank);
+                        self.set_vblank_interrupt();
                     }
                 } else {
                 }
@@ -263,9 +264,9 @@ impl PPU {
                 let ly = self.get_ly();
                 if self.cycles == 455 {
                     if ly == 143 {
-                        self.status = VBlank;
+                        self.set_mode(VBlank);
                     } else {
-                        self.status = OAMScan;
+                        self.set_mode(OAMScan);
                     }
                     self.set_ly(ly + 1);
                     self.cycles = 0;
@@ -278,7 +279,7 @@ impl PPU {
                 let ly = self.get_ly();
                 if self.cycles == 455 {
                     if ly == 153 {
-                        self.status = OAMScan;
+                        self.set_mode(OAMScan);
                         self.set_ly(0);
                     } else {
                         self.set_ly(ly + 1);
@@ -303,9 +304,9 @@ impl PPU {
         };
         match color_value {
             0 => Color::WHITE as u32,
-            1 => Color::LIGHT_GRAY as u32,
-            2 => Color::DARK_GRAY as u32,
-            3 => Color::BLACK_GRAY as u32,
+            1 => Color::LightGray as u32,
+            2 => Color::DarkGray as u32,
+            3 => Color::BlackGray as u32,
             _ => {
                 panic!("color_value is out of range {}", color_value);
             }
@@ -316,5 +317,21 @@ impl PPU {
     }
     fn get_ly(&self) -> u8 {
         self.mmu.borrow().get(0xFF44)
+    }
+    fn set_vblank_interrupt(&mut self) {
+        let d8 = self.mmu.borrow_mut().get(0xFF0F);
+        self.mmu.borrow_mut().set(0xFF0F, d8 | 0x1);
+    }
+    fn set_mode(&mut self, mode: PpuStatus) {
+        self.status = mode;
+        let value = match self.status {
+            OAMScan => 0b10,
+            Drawing => 0b11,
+            HBlank => 0b00,
+            VBlank => 0b01,
+        };
+        let d8 = self.mmu.borrow_mut().get(0xFF41);
+        let d8 = d8 & 0b11111100 | value;
+        self.mmu.borrow_mut().set(0xFF41, d8);
     }
 }
