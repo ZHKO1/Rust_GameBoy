@@ -20,6 +20,7 @@ fn main() {
     ])
     .unwrap();
 
+    // let bios_path = "tests/DMG_ROM.bin";
     let bios_path = "";
     let rom_path = "tests/01-special.gb";
     let mut gameboy = GameBoy::new(bios_path, rom_path);
