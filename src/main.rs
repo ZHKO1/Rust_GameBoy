@@ -1,7 +1,7 @@
 extern crate log;
 extern crate simplelog;
-use rust_gameboy::{display::Display, gameboy::GameBoy};
 use simplelog::*;
+use rust_gameboy::{display::Display, gameboy::GameBoy};
 use std::fs::File;
 
 fn main() {

@@ -590,10 +590,3 @@ impl Stable for MBC5 {
             .unwrap();
     }
 }
-
-#[test]
-fn test() {
-    let cart = open("tests/SML.gb");
-    let opcode = cart.get(0x100);
-    println!("{:02x}", opcode);
-}

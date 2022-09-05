@@ -41,6 +41,7 @@ pub struct Mmu {
     boot: [u8; 0x100],
     cartridge: Box<dyn Cartridge>,
     other: MemoryBlock,
+    pub log_msg: String,
 }
 
 impl Mmu {
@@ -53,6 +54,7 @@ impl Mmu {
             boot,
             cartridge,
             other,
+            log_msg: String::new(),
         };
         if skip_boot {
             mmu.set(0xFF50, 1);
@@ -65,6 +67,17 @@ impl Mmu {
     pub fn is_boot(&self) -> bool {
         let v = self.get(0xFF50);
         v == 0
+    }
+    pub fn bind_event(&mut self, index: u16, value: u8) {
+        match index {
+            0xFF02 => {
+                if value == 0x81 {
+                    let v = self.get(0xFF01);
+                    self.log_msg.push(v as char);
+                }
+            }
+            _ => {}
+        };
     }
 }
 impl Memory for Mmu {
@@ -84,6 +97,7 @@ impl Memory for Mmu {
         }
     }
     fn set(&mut self, index: u16, value: u8) {
+        self.bind_event(index, value);
         match index {
             0x0000..=0x7FFF => self.cartridge.set(index, value),
             0x8000..=0x9FFF => self.other.set(index, value),

@@ -6,3 +6,4 @@ pub mod mmu;
 pub mod ppu;
 pub mod gameboy;
 pub mod util;
+mod test;

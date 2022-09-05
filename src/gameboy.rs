@@ -7,7 +7,7 @@ const WIDTH: usize = 160;
 const HEIGHT: usize = 144;
 
 pub struct GameBoy {
-    mmu: Rc<RefCell<Mmu>>,
+    pub mmu: Rc<RefCell<Mmu>>,
     ppu: PPU,
     cpu: Cpu,
 }
