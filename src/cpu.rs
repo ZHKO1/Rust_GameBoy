@@ -869,10 +869,10 @@ impl Cpu {
             },
             // INC rr
             0x03 | 0x23 | 0x13 | 0x33 => match opcode {
-                0x03 => self.reg.set_bc(self.reg.get_bc() + 1),
-                0x23 => self.reg.set_hl(self.reg.get_hl() + 1),
-                0x13 => self.reg.set_de(self.reg.get_de() + 1),
-                0x33 => self.reg.sp = self.reg.sp + 1,
+                0x03 => self.reg.set_bc(self.reg.get_bc().wrapping_add(1)),
+                0x23 => self.reg.set_hl(self.reg.get_hl().wrapping_add(1)),
+                0x13 => self.reg.set_de(self.reg.get_de().wrapping_add(1)),
+                0x33 => self.reg.sp = self.reg.sp.wrapping_add(1),
                 _ => {}
             },
             // JR r8
