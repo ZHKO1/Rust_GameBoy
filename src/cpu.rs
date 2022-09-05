@@ -1415,11 +1415,11 @@ impl Cpu {
             }
             // DI
             0xF3 => {
-                self.ime_next = Some(true);
+                self.ime_next = Some(false);
             }
             // EI
             0xFB => {
-                self.ime_next = Some(false);
+                self.ime_next = Some(true);
             }
             0xD3 | 0xDB | 0xDD | 0xE3 | 0xE4 | 0xEB | 0xEC | 0xED | 0xF4 | 0xFC | 0xFD => {
                 panic!("this opcode not exist {:02x}", opcode);
@@ -1647,7 +1647,7 @@ impl Cpu {
     }
     fn stack_pop(&mut self) -> u16 {
         let value = self.memory.borrow_mut().get_word(self.reg.sp);
-        self.memory.borrow_mut().set_word(self.reg.sp, 0);
+        // self.memory.borrow_mut().set_word(self.reg.sp, 0);
         self.reg.sp = self.reg.sp + 2;
         value
     }
