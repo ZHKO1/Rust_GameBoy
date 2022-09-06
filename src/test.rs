@@ -21,7 +21,24 @@ mod test {
                 assert_eq!(&str[..], expect);
             }
 
-            
+            #[test]
+            fn test_02_interrupts() {
+                let bios_path = "";
+                let rom_path = "tests/gb-test-roms/cpu_instrs/individual/02-interrupts.gb";
+                let mut gameboy = GameBoy::new(bios_path, rom_path);
+                let expect = "02-interrupts\n\n\nPassed";
+                let mut cycle: usize = 0;
+                while gameboy.mmu.borrow().log_msg.len() < expect.len() {
+                    gameboy.trick();
+                    cycle += 1;
+                    if cycle > 103647161 {
+                        panic!("too long time");
+                    }
+                }
+                let str = &gameboy.mmu.borrow().log_msg;
+                assert_eq!(&str[..], expect);
+            }
+
             #[test]
             fn test_03_op_sp_hl() {
                 let bios_path = "";
@@ -39,7 +56,6 @@ mod test {
                 let str = &gameboy.mmu.borrow().log_msg;
                 assert_eq!(&str[..], expect);
             }
-
 
             #[test]
             fn test_04_op_r_imm() {
