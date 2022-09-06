@@ -2,168 +2,42 @@ mod test {
     mod gb_test_roms {
 
         mod cpu_instrs {
-            use crate::gameboy::GameBoy;
-            #[test]
-            fn test_01_special() {
-                let bios_path = "";
-                let rom_path = "tests/gb-test-roms/cpu_instrs/individual/01-special.gb";
-                let mut gameboy = GameBoy::new(bios_path, rom_path);
-                let expect = "01-special\n\n\nPassed";
-                let mut cycle: usize = 0;
-                while gameboy.mmu.borrow().log_msg.len() < expect.len() {
-                    gameboy.trick();
-                    cycle += 1;
-                    if cycle > 103647161 {
-                        panic!("too long time");
+            macro_rules! test {
+                ($func: ident, $x:expr) => {
+                    #[test]
+                    fn $func() {
+                        use crate::gameboy::GameBoy;
+                        let bios_path = "";
+                        let rom_path = format!(
+                            "{}{}{}",
+                            "tests/gb-test-roms/cpu_instrs/individual/", $x, ".gb"
+                        );
+                        let mut gameboy = GameBoy::new(bios_path, rom_path);
+                        let expect = format!("{}\n\n\nPassed", $x);
+                        let mut cycle: usize = 0;
+                        while gameboy.mmu.borrow().log_msg.len() < expect.len() {
+                            gameboy.trick();
+                            cycle += 1;
+                            if cycle > 103647161 {
+                                panic!("too long time");
+                            }
+                        }
+                        let str = &gameboy.mmu.borrow().log_msg;
+                        assert_eq!(&str[..], &expect[..]);
                     }
-                }
-                let str = &gameboy.mmu.borrow().log_msg;
-                assert_eq!(&str[..], expect);
+                };
             }
-
-            #[test]
-            fn test_02_interrupts() {
-                let bios_path = "";
-                let rom_path = "tests/gb-test-roms/cpu_instrs/individual/02-interrupts.gb";
-                let mut gameboy = GameBoy::new(bios_path, rom_path);
-                let expect = "02-interrupts\n\n\nPassed";
-                let mut cycle: usize = 0;
-                while gameboy.mmu.borrow().log_msg.len() < expect.len() {
-                    gameboy.trick();
-                    cycle += 1;
-                    if cycle > 103647161 {
-                        panic!("too long time");
-                    }
-                }
-                let str = &gameboy.mmu.borrow().log_msg;
-                assert_eq!(&str[..], expect);
-            }
-
-            #[test]
-            fn test_03_op_sp_hl() {
-                let bios_path = "";
-                let rom_path = "tests/gb-test-roms/cpu_instrs/individual/03-op sp,hl.gb";
-                let mut gameboy = GameBoy::new(bios_path, rom_path);
-                let expect = "03-op sp,hl\n\n\nPassed";
-                let mut cycle: usize = 0;
-                while gameboy.mmu.borrow().log_msg.len() < expect.len() {
-                    gameboy.trick();
-                    cycle += 1;
-                    if cycle > 103647161 {
-                        panic!("too long time");
-                    }
-                }
-                let str = &gameboy.mmu.borrow().log_msg;
-                assert_eq!(&str[..], expect);
-            }
-
-            #[test]
-            fn test_04_op_r_imm() {
-                let bios_path = "";
-                let rom_path = "tests/gb-test-roms/cpu_instrs/individual/04-op r,imm.gb";
-                let mut gameboy = GameBoy::new(bios_path, rom_path);
-                let expect = "04-op r,imm\n\n\nPassed";
-                let mut cycle: usize = 0;
-                while gameboy.mmu.borrow().log_msg.len() < expect.len() {
-                    gameboy.trick();
-                    cycle += 1;
-                    if cycle > 103647161 {
-                        panic!("too long time");
-                    }
-                }
-                let str = &gameboy.mmu.borrow().log_msg;
-                assert_eq!(&str[..], expect);
-            }
-
-            #[test]
-            fn test_05_op_rp() {
-                let bios_path = "";
-                let rom_path = "tests/gb-test-roms/cpu_instrs/individual/05-op rp.gb";
-                let mut gameboy = GameBoy::new(bios_path, rom_path);
-                let expect = "05-op rp\n\n\nPassed";
-                let mut cycle: usize = 0;
-                while gameboy.mmu.borrow().log_msg.len() < expect.len() {
-                    gameboy.trick();
-                    cycle += 1;
-                    if cycle > 103647161 {
-                        panic!("too long time");
-                    }
-                }
-                let str = &gameboy.mmu.borrow().log_msg;
-                assert_eq!(&str[..], expect);
-            }
-
-            #[test]
-            fn test_06_ld_r_r() {
-                let bios_path = "";
-                let rom_path = "tests/gb-test-roms/cpu_instrs/individual/06-ld r,r.gb";
-                let mut gameboy = GameBoy::new(bios_path, rom_path);
-                let expect = "06-ld r,r\n\n\nPassed";
-                let mut cycle: usize = 0;
-                while gameboy.mmu.borrow().log_msg.len() < expect.len() {
-                    gameboy.trick();
-                    cycle += 1;
-                    if cycle > 103647161 {
-                        panic!("too long time");
-                    }
-                }
-                let str = &gameboy.mmu.borrow().log_msg;
-                assert_eq!(&str[..], expect);
-            }
-
-            #[test]
-            fn test_09_op_r_r() {
-                let bios_path = "";
-                let rom_path = "tests/gb-test-roms/cpu_instrs/individual/09-op r,r.gb";
-                let mut gameboy = GameBoy::new(bios_path, rom_path);
-                let expect = "09-op r,r\n\n\nPassed";
-                let mut cycle: usize = 0;
-                while gameboy.mmu.borrow().log_msg.len() < expect.len() {
-                    gameboy.trick();
-                    cycle += 1;
-                    if cycle > 103647161 {
-                        panic!("too long time");
-                    }
-                }
-                let str = &gameboy.mmu.borrow().log_msg;
-                assert_eq!(&str[..], expect);
-            }
-
-            #[test]
-            fn test_10_bit_ops() {
-                let bios_path = "";
-                let rom_path = "tests/gb-test-roms/cpu_instrs/individual/10-bit ops.gb";
-                let mut gameboy = GameBoy::new(bios_path, rom_path);
-                let expect = "10-bit ops\n\n\nPassed";
-                let mut cycle: usize = 0;
-                while gameboy.mmu.borrow().log_msg.len() < expect.len() {
-                    gameboy.trick();
-                    cycle += 1;
-                    if cycle > 103647161 {
-                        panic!("too long time");
-                    }
-                }
-                let str = &gameboy.mmu.borrow().log_msg;
-                assert_eq!(&str[..], expect);
-            }
-
-            #[test]
-            fn test_11_op_a_hl() {
-                let bios_path = "";
-                let rom_path = "tests/gb-test-roms/cpu_instrs/individual/11-op a,(hl).gb";
-                let mut gameboy = GameBoy::new(bios_path, rom_path);
-                let expect = "11-op a,(hl)\n\n\nPassed";
-                let mut cycle: usize = 0;
-                while gameboy.mmu.borrow().log_msg.len() < expect.len() {
-                    gameboy.trick();
-                    cycle += 1;
-                    if cycle > 103647161 {
-                        panic!("too long time");
-                    }
-                }
-                let str = &gameboy.mmu.borrow().log_msg;
-                assert_eq!(&str[..], expect);
-            }
+            test!(test_01_special, "01-special");
+            test!(test_02_interrupts, "02-interrupts");
+            test!(test_03_op_sp_hl, "03-op sp,hl");
+            test!(test_04_op_r_imm, "04-op r,imm");
+            test!(test_05_op_rp, "05-op rp");
+            test!(test_06_ld_r_r, "06-ld r,r");
+            test!(test_07_jr_jp_call_ret_rst, "07-jr,jp,call,ret,rst");
+            test!(test_08_misc_instrs, "08-misc instrs");
+            test!(test_09_op_r_r, "09-op r,r");
+            test!(test_10_bit_ops, "10-bit ops");
+            test!(test_11_op_a_hl, "11-op a,(hl)");
         }
     }
 }
