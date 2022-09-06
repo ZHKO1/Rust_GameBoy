@@ -1,4 +1,4 @@
-use crate::cpu::Cpu;
+use crate::cpu::{Cpu, Timer};
 use crate::mmu::Mmu;
 use crate::ppu::PPU;
 use std::{cell::RefCell, path::Path, rc::Rc};
@@ -10,6 +10,7 @@ pub struct GameBoy {
     pub mmu: Rc<RefCell<Mmu>>,
     ppu: PPU,
     cpu: Cpu,
+    timer: Timer,
 }
 
 impl GameBoy {
@@ -22,14 +23,17 @@ impl GameBoy {
             cpu.skip_bios();
         }
         let ppu = PPU::new(rc_refcell_mmu.clone());
+        let timer = Timer::new(rc_refcell_mmu.clone());
         Self {
             mmu: rc_refcell_mmu.clone(),
             cpu,
             ppu,
+            timer,
         }
     }
     pub fn trick(&mut self) {
         self.cpu.trick();
+        self.timer.trick();
         self.ppu.trick();
     }
     pub fn get_frame_buffer(&self) -> &[u32; WIDTH * HEIGHT] {
