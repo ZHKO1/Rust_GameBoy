@@ -30,4 +30,10 @@ impl Display {
             .update_with_buffer(&buffer, self.width, self.height)
             .unwrap();
     }
+    pub fn is_open(&mut self) -> bool {
+        self.window.is_open()
+    }
+    pub fn is_key_down(&mut self, key: Key) -> bool {
+        self.window.is_key_down(key)
+    }
 }

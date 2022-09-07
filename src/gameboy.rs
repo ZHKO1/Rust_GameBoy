@@ -1,4 +1,5 @@
 use crate::cpu::{Cpu, Timer};
+use crate::joypad::JoyPad;
 use crate::mmu::Mmu;
 use crate::ppu::PPU;
 use std::{cell::RefCell, path::Path, rc::Rc};
@@ -11,6 +12,7 @@ pub struct GameBoy {
     ppu: PPU,
     cpu: Cpu,
     timer: Timer,
+    pub joypad: JoyPad,
 }
 
 impl GameBoy {
@@ -24,11 +26,13 @@ impl GameBoy {
         }
         let ppu = PPU::new(rc_refcell_mmu.clone());
         let timer = Timer::new(rc_refcell_mmu.clone());
+        let joypad = JoyPad::new(rc_refcell_mmu.clone());
         Self {
             mmu: rc_refcell_mmu.clone(),
             cpu,
             ppu,
             timer,
+            joypad,
         }
     }
     pub fn trick(&mut self) {

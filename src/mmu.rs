@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::vec;
 
 use crate::cartridge::{open, Cartridge};
 use crate::memory::Memory;

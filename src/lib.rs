@@ -4,6 +4,7 @@ pub mod display;
 pub mod memory;
 pub mod mmu;
 pub mod ppu;
+pub mod joypad;
 pub mod gameboy;
 pub mod util;
 mod test;
