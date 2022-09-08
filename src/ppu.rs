@@ -219,29 +219,26 @@ pub struct PPU {
 impl PPU {
     pub fn new(mmu: Rc<RefCell<dyn Memory>>) -> Self {
         let fifo = FIFO::new(mmu.clone());
-        PPU {
+        let mut ppu = PPU {
             cycles: 0,
             status: OAMScan,
             mmu,
             fifo,
             ly_buffer: Vec::new(),
             frame_buffer: [0; WIDTH * HEIGHT],
-        }
+        };
+        ppu.set_mode(OAMScan);
+        ppu
     }
     pub fn trick(&mut self) {
         match self.status {
             OAMScan => {
-                // println!("OAMScan");
                 if self.cycles == 79 {
                     self.set_mode(Drawing);
-                    self.ly_buffer = Vec::new();
-                    let ly = self.get_ly();
-                    self.fifo.init(ly);
                 }
                 self.cycles += 1;
             }
             Drawing => {
-                // println!("Drawing");
                 let pixel_option = self.fifo.trick();
                 if let Some(pixel) = pixel_option {
                     self.ly_buffer.push(self.get_pixel_color(pixel.pvalue));
@@ -250,17 +247,13 @@ impl PPU {
                         for (scan_x, pixel) in self.ly_buffer.iter().enumerate() {
                             self.frame_buffer[(ly as usize * WIDTH + scan_x) as usize] = *pixel;
                         }
-                        self.ly_buffer.clear();
-                        self.fifo.clear();
                         self.set_mode(HBlank);
-                        self.set_vblank_interrupt();
                     }
                 } else {
                 }
                 self.cycles += 1;
             }
             HBlank => {
-                // println!("HBlank");
                 let ly = self.get_ly();
                 if self.cycles == 455 {
                     if ly == 143 {
@@ -275,7 +268,7 @@ impl PPU {
                 }
             }
             VBlank => {
-                // println!("VBlank");
+                self.set_vblank_interrupt();
                 let ly = self.get_ly();
                 if self.cycles == 455 {
                     if ly == 153 {
@@ -323,13 +316,29 @@ impl PPU {
         self.mmu.borrow_mut().set(0xFF0F, d8 | 0x1);
     }
     fn set_mode(&mut self, mode: PpuStatus) {
-        self.status = mode;
-        let value = match self.status {
-            OAMScan => 0b10,
-            Drawing => 0b11,
-            HBlank => 0b00,
-            VBlank => 0b01,
+        let value;
+        match mode {
+            OAMScan => {
+                self.ly_buffer = Vec::new();
+                let ly = self.get_ly();
+                self.fifo.init(ly);
+
+                value = 0b10;
+            }
+            Drawing => {
+                value = 0b11;
+            }
+            HBlank => {
+                self.ly_buffer.clear();
+                self.fifo.clear();
+
+                value = 0b00;
+            }
+            VBlank => {
+                value = 0b01;
+            }
         };
+        self.status = mode;
         let d8 = self.mmu.borrow_mut().get(0xFF41);
         let d8 = d8 & 0b11111100 | value;
         self.mmu.borrow_mut().set(0xFF41, d8);

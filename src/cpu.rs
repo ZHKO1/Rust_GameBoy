@@ -1663,21 +1663,7 @@ impl Cpu {
         u16_from_2u8(low, high)
     }
 }
-/*
-FF04 Divider Register
- 16384Hz 的频率 增长
- 一秒执行16384Hz 2^14 HZ
- CPU 疫苗执行 2^22 Hz
-FF05 TIMA
- FF07 的 频率 增长
- 重置以FF06为准
-FF06 TMA
-FF07 TAC
- 4096 Hz
- 262144 Hz
- 65536 Hz
- 16384 Hz
-*/
+
 pub enum TimerClock {
     S0 = 1024,
     S1 = 16,

@@ -67,6 +67,17 @@ impl Mmu {
         let v = self.get(0xFF50);
         v == 0
     }
+    fn dma(&mut self, value: u8) {
+        if value > 0xdf {
+            return;
+        }
+        for index in 0x00..=0x9F {
+            let source = ((value as u16) << 8) | index;
+            let destination = 0xFE00 | index;
+            let source_v = self.get(source);
+            self.set(destination, source_v);
+        }
+    }
     pub fn bind_event(&mut self, index: u16, value: u8) {
         match index {
             0xFF02 => {
@@ -74,6 +85,9 @@ impl Mmu {
                     let v = self.get(0xFF01);
                     self.log_msg.push(v as char);
                 }
+            }
+            0xFF46 => {
+                self.dma(value);
             }
             _ => {}
         };
