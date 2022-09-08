@@ -156,13 +156,41 @@ impl Fetcher {
     }
 }
 
+struct OAM {
+    y: u8,
+    x: u8,
+    tile_index: u8,
+    bg_window_over_obj: bool,
+    x_flip: bool,
+    y_flip: bool,
+    palette: bool,
+}
+impl OAM {
+    fn new(y: u8, x: u8, tile_index: u8, flags: u8) -> Self {
+        Self {
+            y,
+            x,
+            tile_index,
+            bg_window_over_obj: check_bit(flags, 7),
+            x_flip: check_bit(flags, 6),
+            y_flip: check_bit(flags, 5),
+            palette: check_bit(flags, 4),
+        }
+    }
+    fn is_scaned(&self, ly: u8) -> bool {
+        let y_start = self.y;
+        let y_end = self.y + 8;
+        (ly >= y_start) && (ly <= y_end) && (self.x != 0)
+    }
+}
+
 struct FIFO {
     x: u8,
     y: u8,
     fetcher: Fetcher,
     queue: VecDeque<Pixel>,
+    oam: Vec<OAM>,
 }
-
 impl FIFO {
     fn new(mmu: Rc<RefCell<dyn Memory>>) -> Self {
         let fetcher = Fetcher::new(mmu.clone());
@@ -171,12 +199,16 @@ impl FIFO {
             y: 0,
             fetcher,
             queue: VecDeque::new(),
+            oam: vec![],
         }
     }
     fn init(&mut self, y: u8) {
         self.x = 0;
         self.y = y;
         self.fetcher.init(0, y);
+    }
+    fn init_oam(&mut self, oam: Vec<OAM>) {
+        self.oam = oam;
     }
     fn trick(&mut self) -> Option<Pixel> {
         let result = if self.queue.len() > 8 {
@@ -234,6 +266,10 @@ impl PPU {
     pub fn trick(&mut self) {
         match self.status {
             OAMScan => {
+                if self.cycles == 0 {
+                    let oams = self.oam_scan();
+                    self.fifo.init_oam(oams);
+                }
                 if self.cycles == 79 {
                     self.set_mode(Drawing);
                 }
@@ -305,6 +341,25 @@ impl PPU {
                 panic!("color_value is out of range {}", color_value);
             }
         }
+    }
+    fn oam_scan(&self) -> Vec<OAM> {
+        let ly = self.get_ly();
+        let mut result = vec![];
+        for index in 00..40 {
+            let oam_address = 0xFE00 + (index as u16) * 4;
+            let y = self.mmu.borrow().get(oam_address);
+            let x = self.mmu.borrow().get(oam_address + 1);
+            let tile_index = self.mmu.borrow().get(oam_address + 2);
+            let flags = self.mmu.borrow().get(oam_address + 3);
+            let oam = OAM::new(y, x, tile_index, flags);
+            if oam.is_scaned(ly) {
+                result.push(oam);
+            }
+            if result.len() == 10 {
+                break;
+            }
+        }
+        result
     }
     fn set_ly(&mut self, ly: u8) {
         self.mmu.borrow_mut().set(0xFF44, ly);
