@@ -157,8 +157,8 @@ impl Fetcher {
 }
 
 struct FIFO {
-    scan_x: u8,
-    scan_y: u8,
+    x: u8,
+    y: u8,
     fetcher: Fetcher,
     queue: VecDeque<Pixel>,
 }
@@ -167,30 +167,31 @@ impl FIFO {
     fn new(mmu: Rc<RefCell<dyn Memory>>) -> Self {
         let fetcher = Fetcher::new(mmu.clone());
         FIFO {
-            scan_x: 0,
-            scan_y: 0,
+            x: 0,
+            y: 0,
             fetcher,
             queue: VecDeque::new(),
         }
     }
     fn init(&mut self, y: u8) {
-        self.scan_x = 0;
-        self.scan_y = y;
+        self.x = 0;
+        self.y = y;
         self.fetcher.init(0, y);
     }
     fn trick(&mut self) -> Option<Pixel> {
         let result = if self.queue.len() > 8 {
+            self.x += 1;
             self.pop_front()
         } else {
             None
         };
         if self.fetcher.buffer.len() > 0 {
             if self.queue.len() <= 8 {
-                self.scan_x += self.fetcher.buffer.len() as u8;
                 for pixel in self.fetcher.buffer.clone().into_iter() {
                     self.push_back(pixel);
                 }
-                self.fetcher.init(self.scan_x, self.scan_y);
+                let fetcher_x = self.x + self.queue.len() as u8;
+                self.fetcher.init(fetcher_x, self.y);
             }
         } else {
             self.fetcher.trick();
