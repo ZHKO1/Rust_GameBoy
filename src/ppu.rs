@@ -33,7 +33,9 @@ enum PixelType {
 #[derive(Clone, Copy)]
 struct Pixel {
     ptype: PixelType,
-    pvalue: u8,
+    pcolor: u8,
+    palette: bool,
+    bg_window_over_obj: bool,
 }
 
 enum FetcherStatus {
@@ -54,6 +56,8 @@ struct Fetcher {
     oam_y: u8,
     x_flip: bool,
     y_flip: bool,
+    palette: bool,
+    bg_window_over_obj: bool,
     ptype: PixelType,
     mmu: Rc<RefCell<dyn Memory>>,
     status: FetcherStatus,
@@ -75,6 +79,8 @@ impl Fetcher {
             oam_y: 0,
             x_flip: false,
             y_flip: false,
+            palette: false,
+            bg_window_over_obj: false,
             ptype: BG,
             mmu,
             cycles: 0,
@@ -100,6 +106,8 @@ impl Fetcher {
 
         self.x_flip = false;
         self.y_flip = false;
+        self.palette = false;
+        self.bg_window_over_obj = false;
         self.ptype = ptype;
 
         self.cycles = 0;
@@ -243,12 +251,36 @@ impl Fetcher {
             let pixel_low = check_bit(self.tile_data_low, pixel_bit as u8);
             let pixel_high = check_bit(self.tile_data_high, pixel_bit as u8);
             let pvalue = (pixel_low as u8) | ((pixel_high as u8) << 1);
+            let pcolor = self.get_color_index(self.ptype, pvalue, self.palette);
             result.push(Pixel {
                 ptype: self.ptype,
-                pvalue,
+                pcolor,
+                palette: self.palette,
+                bg_window_over_obj: self.bg_window_over_obj,
             });
         }
         result
+    }
+    fn get_color_index(&self, ptype: PixelType, pvalue: u8, is_obp0: bool) -> u8 {
+        let palette = match ptype {
+            BG | Window => self.mmu.borrow().get(0xFF47),
+            Sprite => {
+                if is_obp0 {
+                    self.mmu.borrow().get(0xFF49)
+                } else {
+                    self.mmu.borrow().get(0xFF48)
+                }
+            }
+        };
+        match pvalue {
+            0 => palette & 0b11,
+            1 => (palette & 0b1100) >> 2,
+            2 => (palette & 0b110000) >> 4,
+            3 => (palette & 0b11000000) >> 6,
+            _ => {
+                panic!("color index is out of range {}", pvalue);
+            }
+        }
     }
 }
 
@@ -269,8 +301,8 @@ impl OAM {
             x,
             tile_index,
             bg_window_over_obj: check_bit(flags, 7),
-            x_flip: check_bit(flags, 6),
-            y_flip: check_bit(flags, 5),
+            x_flip: check_bit(flags, 5),
+            y_flip: check_bit(flags, 6),
             palette: check_bit(flags, 4),
         }
     }
@@ -344,6 +376,8 @@ impl FIFO {
                                 self.fetcher.oam_y = oam.y;
                                 self.fetcher.x_flip = oam.x_flip;
                                 self.fetcher.y_flip = oam.y_flip;
+                                self.fetcher.bg_window_over_obj = oam.bg_window_over_obj;
+                                self.fetcher.palette = oam.palette;
                                 self.fetcher.tile_index = 0x8000 + (oam.tile_index as u16) * 16;
                                 return None;
                             }
@@ -352,7 +386,7 @@ impl FIFO {
                             }
                         };
                     }
-                    // 检查完毕，无异常，正常流程
+                    // 执行到这，无异常，正常压入弹出流程
                     self.x += 1;
                     result = self.pop_front();
                 }
@@ -372,8 +406,21 @@ impl FIFO {
             }
             FifoTrick::Sprite => {
                 if self.fetcher.buffer.len() > 0 {
-                    for (index, pixel) in self.fetcher.buffer.clone().into_iter().enumerate() {
-                        self.queue[index] = pixel;
+                    for (index, pixel) in self.fetcher.buffer.iter().enumerate() {
+                        if pixel.bg_window_over_obj {
+                            let bg_pixel = &self.queue[index];
+                            if bg_pixel.pcolor == 0 {
+                                self.queue[index] = *pixel;
+                            } else {
+                                self.queue[index].ptype = Sprite;
+                            }
+                        } else {
+                            if pixel.pcolor != 0 {
+                                self.queue[index] = *pixel;
+                            } else {
+                                self.queue[index].ptype = Sprite;
+                            }
+                        }
                     }
                     self.status = FifoTrick::BgWindow;
                     let fetcher_x = self.x + self.queue.len() as u8;
@@ -496,7 +543,7 @@ impl PPU {
             Drawing => {
                 let pixel_option = self.fifo.trick();
                 if let Some(pixel) = pixel_option {
-                    self.ly_buffer.push(self.get_pixel_color(pixel.pvalue));
+                    self.ly_buffer.push(self.get_pixel_color(pixel.pcolor));
                     if self.ly_buffer.len() == WIDTH {
                         let ly = self.get_ly();
                         for (scan_x, pixel) in self.ly_buffer.iter().enumerate() {
@@ -539,17 +586,7 @@ impl PPU {
             }
         }
     }
-    fn get_pixel_color(&self, index: u8) -> u32 {
-        let bg_palette = self.mmu.borrow().get(0xFF47);
-        let color_value = match index {
-            0 => bg_palette & 0b11,
-            1 => (bg_palette & 0b1100) >> 2,
-            2 => (bg_palette & 0b110000) >> 4,
-            3 => (bg_palette & 0b11000000) >> 6,
-            _ => {
-                panic!("color index is out of range {}", index);
-            }
-        };
+    fn get_pixel_color(&self, color_value: u8) -> u32 {
         match color_value {
             0 => Color::WHITE as u32,
             1 => Color::LightGray as u32,
