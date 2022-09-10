@@ -55,9 +55,9 @@ fn main() {
         gameboy.trick();
         for (rk, vk) in &keys {
             if display.window.is_key_down(*rk) {
-                gameboy.joypad.input(vk.clone(), true);
+                gameboy.input(vk.clone(), true);
             } else {
-                gameboy.joypad.input(vk.clone(), false);
+                gameboy.input(vk.clone(), false);
             }
         }
         if cycle == 70224 {
