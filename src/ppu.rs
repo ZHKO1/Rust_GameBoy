@@ -34,8 +34,8 @@ enum PixelType {
 struct Pixel {
     ptype: PixelType,
     pcolor: u8,
-    palette: bool,
     bg_window_over_obj: bool,
+    oam_priority: usize,
 }
 
 enum FetcherStatus {
@@ -54,6 +54,7 @@ struct Fetcher {
     cycles: u16,
     oam_x: u8,
     oam_y: u8,
+    oam_priority: usize,
     x_flip: bool,
     y_flip: bool,
     palette: bool,
@@ -80,6 +81,7 @@ impl Fetcher {
             x_flip: false,
             y_flip: false,
             palette: false,
+            oam_priority: 40,
             bg_window_over_obj: false,
             ptype: BG,
             mmu,
@@ -255,8 +257,8 @@ impl Fetcher {
             result.push(Pixel {
                 ptype: self.ptype,
                 pcolor,
-                palette: self.palette,
                 bg_window_over_obj: self.bg_window_over_obj,
+                oam_priority: self.oam_priority,
             });
         }
         result
@@ -293,9 +295,10 @@ struct OAM {
     x_flip: bool,
     y_flip: bool,
     palette: bool,
+    priority: usize,
 }
 impl OAM {
-    fn new(y: u8, x: u8, tile_index: u8, flags: u8) -> Self {
+    fn new(y: u8, x: u8, tile_index: u8, flags: u8, priority: usize) -> Self {
         Self {
             y,
             x,
@@ -304,6 +307,7 @@ impl OAM {
             x_flip: check_bit(flags, 5),
             y_flip: check_bit(flags, 6),
             palette: check_bit(flags, 4),
+            priority,
         }
     }
     fn is_scaned(&self, ly: u8) -> bool {
@@ -326,6 +330,7 @@ struct FIFO {
     status: FifoTrick,
     mmu: Rc<RefCell<dyn Memory>>,
     fetcher: Fetcher,
+    sprite_queue: VecDeque<Pixel>,
     queue: VecDeque<Pixel>,
     oam: Vec<OAM>,
 }
@@ -338,6 +343,7 @@ impl FIFO {
             mmu,
             status: FifoTrick::BgWindow,
             fetcher,
+            sprite_queue: VecDeque::new(),
             queue: VecDeque::new(),
             oam: vec![],
         }
@@ -345,6 +351,7 @@ impl FIFO {
     fn init(&mut self, y: u8) {
         self.x = 0;
         self.y = y;
+        self.sprite_queue.clear();
         self.queue.clear();
         self.oam.clear();
         self.status = FifoTrick::BgWindow;
@@ -359,8 +366,8 @@ impl FIFO {
                 let mut result = None;
                 if self.queue.len() > 8 {
                     // 检查当前像素是否上层有Window或Sprite
-                    let new_fetch_event =
-                        self.check_overlap(self.queue.front().unwrap().ptype, self.x);
+                    let front = self.front().unwrap();
+                    let new_fetch_event = self.check_overlap(front.ptype, self.x);
                     if let Some(event) = new_fetch_event {
                         match event {
                             Window => {
@@ -371,9 +378,10 @@ impl FIFO {
                             Sprite => {
                                 self.status = FifoTrick::Sprite;
                                 self.fetcher.init(Sprite, self.x, self.y);
-                                let oam = self.get_oam(self.x).unwrap();
+                                let oam = self.oam_pop(self.x).unwrap();
                                 self.fetcher.oam_x = oam.x;
                                 self.fetcher.oam_y = oam.y;
+                                self.fetcher.oam_priority = oam.priority;
                                 self.fetcher.x_flip = oam.x_flip;
                                 self.fetcher.y_flip = oam.y_flip;
                                 self.fetcher.bg_window_over_obj = oam.bg_window_over_obj;
@@ -406,20 +414,15 @@ impl FIFO {
             }
             FifoTrick::Sprite => {
                 if self.fetcher.buffer.len() > 0 {
+                    let sprite_queue_len = self.sprite_queue.len();
                     for (index, pixel) in self.fetcher.buffer.iter().enumerate() {
-                        if pixel.bg_window_over_obj {
-                            let bg_pixel = &self.queue[index];
-                            if bg_pixel.pcolor == 0 {
+                        if index < sprite_queue_len {
+                            let origin_pixel = self.sprite_queue[index];
+                            if pixel.pcolor != 0 && pixel.oam_priority < origin_pixel.oam_priority {
                                 self.queue[index] = *pixel;
-                            } else {
-                                self.queue[index].ptype = Sprite;
                             }
                         } else {
-                            if pixel.pcolor != 0 {
-                                self.queue[index] = *pixel;
-                            } else {
-                                self.queue[index].ptype = Sprite;
-                            }
+                            self.sprite_queue.push_back(*pixel);
                         }
                     }
                     self.status = FifoTrick::BgWindow;
@@ -451,7 +454,13 @@ impl FIFO {
                     None
                 }
             }
-            Sprite => None,
+            Sprite => {
+                if self.check_sprite(x) {
+                    Some(Sprite)
+                } else {
+                    None
+                }
+            }
         }
     }
     fn check_window(&self, x: u8) -> bool {
@@ -471,19 +480,26 @@ impl FIFO {
             return false;
         }
         for oam in self.oam.iter() {
-            if x >= oam.x - 8 && x < oam.x {
+            if x + 8 >= oam.x  && x < oam.x {
                 return true;
             }
         }
         false
     }
-    fn get_oam(&self, x: u8) -> Option<OAM> {
-        for oam in self.oam.iter() {
-            if x >= oam.x - 8 && x < oam.x {
-                return Some(oam.clone());
+    fn oam_pop(&mut self, x: u8) -> Option<OAM> {
+        let mut oam_index = None;
+        for (index, oam) in self.oam.iter().enumerate() {
+            if x + 8 >= oam.x && x < oam.x {
+                oam_index = Some(index);
+                break;
             }
         }
-        None
+        if !oam_index.is_none() {
+            let index = oam_index.unwrap();
+            Some(self.oam.remove(index))
+        } else {
+            None
+        }
     }
     fn get_fetcher_ptype(&self, x: u8) -> PixelType {
         if self.check_window(x) {
@@ -495,8 +511,34 @@ impl FIFO {
     fn push_back(&mut self, pixel: Pixel) {
         self.queue.push_back(pixel);
     }
+    fn front(&mut self) -> Option<Pixel> {
+        let sprite_pixel_option = self.sprite_queue.front();
+        match sprite_pixel_option {
+            Some(sprite_pixel) => Some(*sprite_pixel),
+            None => self.queue.front().map(|x| *x),
+        }
+    }
     fn pop_front(&mut self) -> Option<Pixel> {
-        self.queue.pop_front()
+        let sprite_pixel_option = self.sprite_queue.pop_front();
+        match sprite_pixel_option {
+            Some(sprite_pixel) => {
+                let bg_pixel = self.queue.pop_front().unwrap();
+                if sprite_pixel.bg_window_over_obj {
+                    if bg_pixel.pcolor == 0 {
+                        Some(sprite_pixel)
+                    } else {
+                        Some(bg_pixel)
+                    }
+                } else {
+                    if sprite_pixel.pcolor == 0 {
+                        Some(bg_pixel)
+                    } else {
+                        Some(sprite_pixel)
+                    }
+                }
+            }
+            None => self.queue.pop_front(),
+        }
     }
     fn clear(&mut self) {
         self.queue.clear();
@@ -606,7 +648,7 @@ impl PPU {
             let x = self.mmu.borrow().get(oam_address + 1);
             let tile_index = self.mmu.borrow().get(oam_address + 2);
             let flags = self.mmu.borrow().get(oam_address + 3);
-            let oam = OAM::new(y, x, tile_index, flags);
+            let oam = OAM::new(y, x, tile_index, flags, index);
             if oam.is_scaned(ly) {
                 result.push(oam);
             }
@@ -623,7 +665,7 @@ impl PPU {
         self.mmu.borrow().get(0xFF44)
     }
     fn set_vblank_interrupt(&mut self) {
-        let d8 = self.mmu.borrow_mut().get(0xFF0F);
+        let d8 = self.mmu.borrow().get(0xFF0F);
         self.mmu.borrow_mut().set(0xFF0F, d8 | 0x1);
     }
     fn set_mode(&mut self, mode: PpuStatus) {
@@ -648,7 +690,7 @@ impl PPU {
             }
         };
         self.status = mode;
-        let d8 = self.mmu.borrow_mut().get(0xFF41);
+        let d8 = self.mmu.borrow().get(0xFF41);
         let d8 = d8 & 0b11111100 | value;
         self.mmu.borrow_mut().set(0xFF41, d8);
     }

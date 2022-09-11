@@ -168,7 +168,7 @@ impl Memory for MBC1 {
                 self.rom[rom_index]
             }
             0xA000..=0xBFFF => {
-                if self.ram_enable {
+                if self.ram_enable && self.ram.len() > 0 {
                     let ram_index =
                         ram_blank_index as usize * 0x2000 as usize + (index - 0xA000) as usize;
                     self.ram[ram_index]
@@ -201,7 +201,7 @@ impl Memory for MBC1 {
                 _ => {}
             },
             0xA000..=0xBFFF => {
-                if self.ram_enable {
+                if self.ram_enable && self.ram.len() > 0 {
                     let ram_blank_index = self.get_ram_blank_index();
                     let ram_index =
                         ram_blank_index as usize * 0x2000 as usize + (index - 0xA000) as usize;
