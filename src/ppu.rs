@@ -471,7 +471,7 @@ impl FIFO {
         }
         let wy = self.mmu.borrow().get(0xFF4A);
         let wx = self.mmu.borrow().get(0xFF4B);
-        (x >= wx - 7) && (self.y > wy)
+        (x >= wx - 7) && (self.y >= wy)
     }
     fn check_sprite(&self, x: u8) -> bool {
         let lcdc = self.mmu.borrow().get(0xFF40);
@@ -480,7 +480,7 @@ impl FIFO {
             return false;
         }
         for oam in self.oam.iter() {
-            if x + 8 >= oam.x  && x < oam.x {
+            if x + 8 >= oam.x && x < oam.x {
                 return true;
             }
         }
@@ -612,7 +612,6 @@ impl PPU {
                 }
             }
             VBlank => {
-                self.set_vblank_interrupt();
                 let ly = self.get_ly();
                 if self.cycles == 455 {
                     if ly == 153 {
@@ -660,6 +659,20 @@ impl PPU {
     }
     fn set_ly(&mut self, ly: u8) {
         self.mmu.borrow_mut().set(0xFF44, ly);
+        let lyc = self.mmu.borrow().get(0xFF45);
+        let stat = self.mmu.borrow().get(0xFF41);
+        if ly == lyc {
+            self.mmu.borrow_mut().set(0xFF41, stat | (1 << 2));
+
+            let stat = self.mmu.borrow().get(0xFF41);
+            let enable = check_bit(stat, 6);
+            if enable {
+                let interrupt_flag = self.mmu.borrow().get(0xFF0F);
+                self.mmu.borrow_mut().set(0xFF0F, interrupt_flag | (1 << 1));
+            }
+        } else {
+            self.mmu.borrow_mut().set(0xFF41, stat & !(1 << 2));
+        };
     }
     fn get_ly(&self) -> u8 {
         self.mmu.borrow().get(0xFF44)
@@ -686,6 +699,7 @@ impl PPU {
                 value = 0b00;
             }
             VBlank => {
+                self.set_vblank_interrupt();
                 value = 0b01;
             }
         };
@@ -693,5 +707,23 @@ impl PPU {
         let d8 = self.mmu.borrow().get(0xFF41);
         let d8 = d8 & 0b11111100 | value;
         self.mmu.borrow_mut().set(0xFF41, d8);
+        match self.status {
+            OAMScan | HBlank | VBlank => self.set_mode_interrupt(),
+            Drawing => {}
+        };
+    }
+    fn set_mode_interrupt(&mut self) {
+        let stat = self.mmu.borrow().get(0xFF41);
+        let bit = match self.status {
+            OAMScan => 2,
+            Drawing => panic!("Drawing interrupt?"),
+            HBlank => 3,
+            VBlank => 4,
+        };
+        let enable = check_bit(stat, bit);
+        if enable {
+            let interrupt_flag = self.mmu.borrow().get(0xFF0F);
+            self.mmu.borrow_mut().set(0xFF0F, interrupt_flag | (1 << 1));
+        }
     }
 }

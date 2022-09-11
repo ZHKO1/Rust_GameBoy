@@ -9,11 +9,21 @@ pub struct Display {
 
 impl Display {
     pub fn init(width: usize, height: usize) -> Self {
+        let mut option = WindowOptions::default();
+        option.resize = true;
+        let c_scale = 2;
+        option.scale = match c_scale {
+            1 => minifb::Scale::X1,
+            2 => minifb::Scale::X2,
+            4 => minifb::Scale::X4,
+            8 => minifb::Scale::X8,
+            _ => panic!("Supported scale: 1, 2, 4 or 8"),
+        };
         let mut window = Window::new(
             "Test - ESC to exit",
             width,
             height,
-            WindowOptions::default(),
+            option,
         )
         .unwrap_or_else(|e| {
             panic!("{}", e);
