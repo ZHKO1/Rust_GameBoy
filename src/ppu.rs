@@ -34,6 +34,7 @@ enum PixelType {
 struct Pixel {
     ptype: PixelType,
     pcolor: u8,
+    pvalue: u8,
     bg_window_over_obj: bool,
     oam_priority: usize,
 }
@@ -240,12 +241,12 @@ impl Fetcher {
         let mut get_pixel_bit: Box<dyn Fn(u8) -> u8> = Box::new(|index: u8| 8 - index - 1);
         let buffer_index_start = match self.ptype {
             BG => (self.scan_x as u16 + self.scx as u16) % 8,
-            Window => (self.scan_x as u16 - self.wx as u16) % 8,
+            Window => (self.scan_x as u16 + 7 - self.wx as u16) % 8,
             Sprite => {
                 if self.x_flip {
                     get_pixel_bit = Box::new(|index: u8| index);
                 }
-                (self.scan_x as u16 - (self.oam_x - 8) as u16) % 8
+                (self.scan_x as u16 + 8 - self.oam_x as u16) % 8
             }
         };
         for buffer_index in buffer_index_start..8 {
@@ -256,6 +257,7 @@ impl Fetcher {
             let pcolor = self.get_color_index(self.ptype, pvalue, self.palette);
             result.push(Pixel {
                 ptype: self.ptype,
+                pvalue,
                 pcolor,
                 bg_window_over_obj: self.bg_window_over_obj,
                 oam_priority: self.oam_priority,
@@ -263,11 +265,11 @@ impl Fetcher {
         }
         result
     }
-    fn get_color_index(&self, ptype: PixelType, pvalue: u8, is_obp0: bool) -> u8 {
+    fn get_color_index(&self, ptype: PixelType, pvalue: u8, is_obp1: bool) -> u8 {
         let palette = match ptype {
             BG | Window => self.mmu.borrow().get(0xFF47),
             Sprite => {
-                if is_obp0 {
+                if is_obp1 {
                     self.mmu.borrow().get(0xFF49)
                 } else {
                     self.mmu.borrow().get(0xFF48)
@@ -418,7 +420,7 @@ impl FIFO {
                     for (index, pixel) in self.fetcher.buffer.iter().enumerate() {
                         if index < sprite_queue_len {
                             let origin_pixel = self.sprite_queue[index];
-                            if pixel.pcolor != 0 && pixel.oam_priority < origin_pixel.oam_priority {
+                            if pixel.pvalue != 0 && pixel.oam_priority < origin_pixel.oam_priority {
                                 self.queue[index] = *pixel;
                             }
                         } else {
@@ -524,13 +526,13 @@ impl FIFO {
             Some(sprite_pixel) => {
                 let bg_pixel = self.queue.pop_front().unwrap();
                 if sprite_pixel.bg_window_over_obj {
-                    if bg_pixel.pcolor == 0 {
+                    if bg_pixel.pvalue == 0 {
                         Some(sprite_pixel)
                     } else {
                         Some(bg_pixel)
                     }
                 } else {
-                    if sprite_pixel.pcolor == 0 {
+                    if sprite_pixel.pvalue == 0 {
                         Some(bg_pixel)
                     } else {
                         Some(sprite_pixel)
