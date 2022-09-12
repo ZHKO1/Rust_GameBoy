@@ -64,5 +64,8 @@ mod test {
 
             test!(test_cpu_instrs, "cpu_instrs/", "cpu_instrs", "cpu_instrs\n\n01:ok  02:ok  03:ok  04:ok  05:ok  06:ok  07:ok  08:ok  09:ok  10:ok  11:ok  \n\nPassed all tests");
         }
+        mod instr_timing {
+            test!(test_instr_timing, "instr_timing/", "instr_timing");            
+        }
     }
 }
