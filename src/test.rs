@@ -112,6 +112,12 @@ mod test {
                 test!(bits_bank2, "emulator-only/mbc1/", "bits_bank2");
                 test!(bits_mode, "emulator-only/mbc1/", "bits_mode");
                 test!(bits_ramg, "emulator-only/mbc1/", "bits_ramg");
+                test!(rom_1mb, "emulator-only/mbc1/", "rom_1Mb");
+                test!(rom_2mb, "emulator-only/mbc1/", "rom_2Mb");
+                test!(rom_4mb, "emulator-only/mbc1/", "rom_4Mb");
+                // test!(rom_8mb, "emulator-only/mbc1/", "rom_8Mb");
+                // test!(rom_16mb, "emulator-only/mbc1/", "rom_16Mb");
+                test!(rom_512kb, "emulator-only/mbc1/", "rom_512kb");
             }
         }
     }

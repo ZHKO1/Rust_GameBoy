@@ -198,7 +198,7 @@ impl Memory for MBC1 {
                 self.rom_blank_bit = value & 0x1F;
             }
             0x4000..=0x5FFF => {
-              self.ram_blank_bit = value & 0x03;
+                self.ram_blank_bit = value & 0x03;
             }
             0x6000..=0x7FFF => match value {
                 0x00 => self.mode = Rom,
