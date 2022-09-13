@@ -108,7 +108,10 @@ mod test {
         }
         mod emulator_only {
             mod mbc1 {
-                test!(mbc1, "emulator-only/mbc1/", "bits_bank1");
+                test!(bits_bank1, "emulator-only/mbc1/", "bits_bank1");
+                test!(bits_bank2, "emulator-only/mbc1/", "bits_bank2");
+                test!(bits_mode, "emulator-only/mbc1/", "bits_mode");
+                test!(bits_ramg, "emulator-only/mbc1/", "bits_ramg");
             }
         }
     }

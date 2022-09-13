@@ -135,7 +135,7 @@ impl MBC1 {
             max_rom_blank_bit_num,
             rom_blank_bit: 0b00001,
             ram_blank_bit: 0b00,
-            ram_enable: true,
+            ram_enable: false,
             save_path: PathBuf::from(path.as_ref()),
         }
     }
@@ -198,7 +198,7 @@ impl Memory for MBC1 {
                 self.rom_blank_bit = value & 0x1F;
             }
             0x4000..=0x5FFF => {
-                self.ram_blank_bit = value & 0x03;
+              self.ram_blank_bit = value & 0x03;
             }
             0x6000..=0x7FFF => match value {
                 0x00 => self.mode = Rom,
