@@ -565,66 +565,77 @@ impl PPU {
             mmu,
             fifo,
             ly_buffer: Vec::new(),
-            frame_buffer: [0; WIDTH * HEIGHT],
+            frame_buffer: [Color::WHITE as u32; WIDTH * HEIGHT],
         };
         ppu.set_mode(OAMScan);
         ppu
     }
     pub fn trick(&mut self) {
-        match self.status {
-            OAMScan => {
-                if self.cycles == 0 {
-                    let ly = self.get_ly();
-                    self.fifo.init(ly);
-                    let oams = self.oam_scan();
-                    self.fifo.set_oam(oams);
-                }
-                if self.cycles == 79 {
-                    self.set_mode(Drawing);
-                }
-                self.cycles += 1;
-            }
-            Drawing => {
-                let pixel_option = self.fifo.trick();
-                if let Some(pixel) = pixel_option {
-                    self.ly_buffer.push(self.get_pixel_color(pixel.pcolor));
-                    if self.ly_buffer.len() == WIDTH {
+        let lcd_enable = self.get_lcd_enable();
+        if !lcd_enable {
+            self.cycles = 0;
+            self.status = OAMScan;
+            self.ly_buffer = Vec::new();
+            self.frame_buffer = [Color::WHITE as u32; WIDTH * HEIGHT];
+            self.fifo = FIFO::new(self.mmu.clone());
+            self.mmu.borrow_mut().set(0xFF44, 0);
+            return;
+        } else {
+            match self.status {
+                OAMScan => {
+                    if self.cycles == 0 {
                         let ly = self.get_ly();
-                        for (scan_x, pixel) in self.ly_buffer.iter().enumerate() {
-                            self.frame_buffer[(ly as usize * WIDTH + scan_x) as usize] = *pixel;
+                        self.fifo.init(ly);
+                        let oams = self.oam_scan();
+                        self.fifo.set_oam(oams);
+                    }
+                    if self.cycles == 79 {
+                        self.set_mode(Drawing);
+                    }
+                    self.cycles += 1;
+                }
+                Drawing => {
+                    let pixel_option = self.fifo.trick();
+                    if let Some(pixel) = pixel_option {
+                        self.ly_buffer.push(self.get_pixel_color(pixel.pcolor));
+                        if self.ly_buffer.len() == WIDTH {
+                            let ly = self.get_ly();
+                            for (scan_x, pixel) in self.ly_buffer.iter().enumerate() {
+                                self.frame_buffer[(ly as usize * WIDTH + scan_x) as usize] = *pixel;
+                            }
+                            self.set_mode(HBlank);
                         }
-                        self.set_mode(HBlank);
-                    }
-                } else {
-                }
-                self.cycles += 1;
-            }
-            HBlank => {
-                let ly = self.get_ly();
-                if self.cycles == 455 {
-                    if ly == 143 {
-                        self.set_mode(VBlank);
                     } else {
-                        self.set_mode(OAMScan);
                     }
-                    self.set_ly(ly + 1);
-                    self.cycles = 0;
-                } else {
                     self.cycles += 1;
                 }
-            }
-            VBlank => {
-                let ly = self.get_ly();
-                if self.cycles == 455 {
-                    if ly == 153 {
-                        self.set_mode(OAMScan);
-                        self.set_ly(0);
-                    } else {
+                HBlank => {
+                    let ly = self.get_ly();
+                    if self.cycles == 455 {
+                        if ly == 143 {
+                            self.set_mode(VBlank);
+                        } else {
+                            self.set_mode(OAMScan);
+                        }
                         self.set_ly(ly + 1);
+                        self.cycles = 0;
+                    } else {
+                        self.cycles += 1;
                     }
-                    self.cycles = 0;
-                } else {
-                    self.cycles += 1;
+                }
+                VBlank => {
+                    let ly = self.get_ly();
+                    if self.cycles == 455 {
+                        if ly == 153 {
+                            self.set_mode(OAMScan);
+                            self.set_ly(0);
+                        } else {
+                            self.set_ly(ly + 1);
+                        }
+                        self.cycles = 0;
+                    } else {
+                        self.cycles += 1;
+                    }
                 }
             }
         }
@@ -678,6 +689,11 @@ impl PPU {
     }
     fn get_ly(&self) -> u8 {
         self.mmu.borrow().get(0xFF44)
+    }
+    fn get_lcd_enable(&self) -> bool {
+        let lcdc = self.mmu.borrow().get(0xFF40);
+        let lcd_enable = check_bit(lcdc, 7);
+        lcd_enable
     }
     fn set_vblank_interrupt(&mut self) {
         let d8 = self.mmu.borrow().get(0xFF0F);
