@@ -118,6 +118,7 @@ struct MBC1 {
     mode: MBC1Mode,
     rom: Vec<u8>,
     ram: Vec<u8>,
+    max_rom_blank_bit_num: u8,
     rom_blank_bit: u8,
     ram_blank_bit: u8,
     ram_enable: bool,
@@ -125,13 +126,16 @@ struct MBC1 {
 }
 impl MBC1 {
     fn new(rom: Vec<u8>, ram: Vec<u8>, path: impl AsRef<Path>) -> Self {
+        let len = rom.len();
+        let max_rom_blank_bit_num = (len / (4 * 16 * 16 * 16)) as u8;
         MBC1 {
             mode: Rom,
             rom,
             ram,
+            max_rom_blank_bit_num,
             rom_blank_bit: 0b00001,
             ram_blank_bit: 0b00,
-            ram_enable: false,
+            ram_enable: true,
             save_path: PathBuf::from(path.as_ref()),
         }
     }
@@ -158,11 +162,12 @@ impl MBC1 {
 }
 impl Memory for MBC1 {
     fn get(&self, index: u16) -> u8 {
-        let rom_blank_index = self.get_rom_blank_index();
+        let mut rom_blank_index = self.get_rom_blank_index();
         let ram_blank_index = self.get_ram_blank_index();
         match index {
             0..=0x3FFF => self.rom[index as usize],
             0x4000..=0x7FFF => {
+                rom_blank_index = rom_blank_index & ((self.max_rom_blank_bit_num - 1) as u8);
                 let rom_index =
                     rom_blank_index as usize * 0x4000 as usize + (index - 0x4000) as usize;
                 self.rom[rom_index]
@@ -173,7 +178,7 @@ impl Memory for MBC1 {
                         ram_blank_index as usize * 0x2000 as usize + (index - 0xA000) as usize;
                     self.ram[ram_index]
                 } else {
-                    0x00
+                    0xFF
                 }
             }
             _ => panic!("out range of MC1"),
@@ -206,6 +211,7 @@ impl Memory for MBC1 {
                     let ram_index =
                         ram_blank_index as usize * 0x2000 as usize + (index - 0xA000) as usize;
                     self.ram[ram_index] = value;
+                } else {
                 }
             }
             _ => panic!("out range of MC1"),

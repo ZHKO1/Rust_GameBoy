@@ -10,6 +10,7 @@ mod test {
                     let rom_path = format!("{}{}{}{}", "tests/gb-test-roms/", $path, $game, ".gb");
                     let mut gameboy = GameBoy::new(bios_path, rom_path);
                     let expect = format!("{}", $expect);
+                    let expect = expect.as_bytes().to_vec();
                     let start = SystemTime::now()
                         .duration_since(SystemTime::UNIX_EPOCH)
                         .unwrap()
@@ -65,7 +66,50 @@ mod test {
             test!(test_cpu_instrs, "cpu_instrs/", "cpu_instrs", "cpu_instrs\n\n01:ok  02:ok  03:ok  04:ok  05:ok  06:ok  07:ok  08:ok  09:ok  10:ok  11:ok  \n\nPassed all tests");
         }
         mod instr_timing {
-            test!(test_instr_timing, "instr_timing/", "instr_timing");            
+            test!(test_instr_timing, "instr_timing/", "instr_timing");
+        }
+    }
+
+    mod mooneye_test_suite {
+        macro_rules! test {
+            ($func: ident, $path:expr, $game:expr) => {
+                #[test]
+                fn $func() {
+                    use crate::gameboy::GameBoy;
+                    use std::time::SystemTime;
+                    let bios_path = "";
+                    let rom_path =
+                        format!("{}{}{}{}", "tests/mts/", $path, $game, ".gb");
+                    let mut gameboy = GameBoy::new(bios_path, rom_path);
+                    let expect = vec![3, 5, 8, 13, 21, 34];
+                    let start = SystemTime::now()
+                        .duration_since(SystemTime::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
+                    let mut clocks: usize = 0;
+                    while gameboy.mmu.borrow().log_msg.len() < expect.len() {
+                        gameboy.trick();
+                        clocks += 1;
+                        if clocks >= 100000 {
+                            let nowtime = SystemTime::now()
+                                .duration_since(SystemTime::UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs();
+                            if nowtime - start > 60 * 60 * 5 {
+                                panic!("too long time");
+                            }
+                            clocks = 0;
+                        }
+                    }
+                    let str = &gameboy.mmu.borrow().log_msg;
+                    assert_eq!(&str[..], &expect[..]);
+                }
+            };
+        }
+        mod emulator_only {
+            mod mbc1 {
+                test!(mbc1, "emulator-only/mbc1/", "bits_bank1");
+            }
         }
     }
 }

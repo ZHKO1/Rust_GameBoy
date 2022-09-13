@@ -46,7 +46,7 @@ pub struct Mmu {
     other: MemoryBlock,
     pub joypad: JoyPad,
     interrupt: Rc<RefCell<Interrupt>>,
-    pub log_msg: String,
+    pub log_msg: Vec<u8>,
 }
 
 impl Mmu {
@@ -64,7 +64,7 @@ impl Mmu {
             other,
             joypad,
             interrupt: rc_refcell_interrupt,
-            log_msg: String::new(),
+            log_msg: vec![],
         };
         if skip_boot {
             mmu.set(0xFF50, 1);
@@ -94,7 +94,7 @@ impl Mmu {
             0xFF02 => {
                 if value == 0x81 {
                     let v = self.get(0xFF01);
-                    self.log_msg.push(v as char);
+                    self.log_msg.push(v);
                 }
             }
             0xFF46 => {
