@@ -47,7 +47,7 @@ impl Memory for JoyPad {
         if (self.select & 0b10_0000) == 0x00 {
             return self.select | (self.matrix >> 4);
         }
-        self.select
+        self.select | 0x0f
     }
     fn set(&mut self, index: u16, value: u8) {
         assert_eq!(index, 0xFF00);
