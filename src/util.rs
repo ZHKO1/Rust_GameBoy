@@ -25,13 +25,12 @@ pub fn read_rom(path: impl AsRef<Path>) -> io::Result<Vec<u8>> {
 }
 
 pub fn read_ram(path: impl AsRef<Path>, ram_size: usize) -> Vec<u8> {
-    let mut ram = vec![0; ram_size];
-    let result = File::open(path);
-    match result {
-        Ok(mut file) => {
-            file.read_to_end(&mut ram).unwrap();
+    match File::open(path) {
+        Ok(mut ok) => {
+            let mut ram = Vec::new();
+            ok.read_to_end(&mut ram).unwrap();
+            ram
         }
-        Err(_) => {}
-    };
-    ram
+        Err(_) => vec![0; ram_size],
+    }
 }
