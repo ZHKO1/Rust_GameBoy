@@ -554,6 +554,7 @@ pub struct PPU {
     fifo: FIFO,
     mmu: Rc<RefCell<dyn Memory>>,
     ly_buffer: Vec<u32>,
+    lcd_enable: bool,
     pub frame_buffer: [u32; WIDTH * HEIGHT],
 }
 impl PPU {
@@ -564,6 +565,7 @@ impl PPU {
             status: OAMScan,
             mmu,
             fifo,
+            lcd_enable: false,
             ly_buffer: Vec::new(),
             frame_buffer: [Color::WHITE as u32; WIDTH * HEIGHT],
         };
@@ -573,13 +575,15 @@ impl PPU {
     pub fn trick(&mut self) {
         let lcd_enable = self.get_lcd_enable();
         if !lcd_enable {
+            if self.lcd_enable == lcd_enable {
+                return;
+            }
             self.cycles = 0;
             self.status = OAMScan;
             self.ly_buffer = Vec::new();
             self.frame_buffer = [Color::WHITE as u32; WIDTH * HEIGHT];
             self.fifo = FIFO::new(self.mmu.clone());
             self.mmu.borrow_mut().set(0xFF44, 0);
-            return;
         } else {
             match self.status {
                 OAMScan => {
@@ -639,6 +643,7 @@ impl PPU {
                 }
             }
         }
+        self.lcd_enable = lcd_enable;
     }
     fn get_pixel_color(&self, color_value: u8) -> u32 {
         match color_value {
