@@ -72,6 +72,7 @@ impl Mmu {
             let boot_rom = read_rom(bios_path).unwrap();
             boot.copy_from_slice(&boot_rom[..0x100]);
         };
+        mmu.set(0xFF40, 0b11100011);
         mmu
     }
     pub fn is_boot(&self) -> bool {

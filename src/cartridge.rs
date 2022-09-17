@@ -234,15 +234,19 @@ struct MBC2 {
     ram: Vec<u8>,
     rom_blank: u8,
     ram_enable: bool,
+    max_rom_blank_bit_num: u8,
     save_path: PathBuf,
 }
 impl MBC2 {
     fn new(rom: Vec<u8>, ram: Vec<u8>, path: impl AsRef<Path>) -> Self {
+        let len = rom.len();
+        let max_rom_blank_bit_num = (len / (4 * 16 * 16 * 16)) as u8;
         MBC2 {
             rom,
             ram,
             rom_blank: 1,
             ram_enable: false,
+            max_rom_blank_bit_num,
             save_path: PathBuf::from(path.as_ref()),
         }
     }
@@ -252,23 +256,16 @@ impl Memory for MBC2 {
         match index {
             0..=0x3FFF => self.rom[index as usize],
             0x4000..=0x7FFF => {
-                let rom_index =
-                    self.rom_blank as usize * 0x4000 as usize + (index - 0x4000) as usize;
+                let rom_blank = self.rom_blank & ((self.max_rom_blank_bit_num - 1) as u8);
+                let rom_index = rom_blank as usize * 0x4000 as usize + (index - 0x4000) as usize;
                 self.rom[rom_index]
             }
-            0xA000..=0xA1FF => {
+            0xA000..=0xBFFF => {
                 if self.ram_enable {
-                    self.ram[index as usize]
+                    let ram_index = (index - 0xA000) % 0x0200;
+                    self.ram[ram_index as usize] | 0xF0
                 } else {
-                    0x00
-                }
-            }
-            0xA200..=0xBFFF => {
-                if self.ram_enable {
-                    let ram_index = 0xA000 + (index - 0xA000 - 1) % 0x01FF;
-                    self.ram[ram_index as usize]
-                } else {
-                    0x00
+                    0xFF
                 }
             }
             _ => panic!("out range of MC2"),
@@ -277,8 +274,8 @@ impl Memory for MBC2 {
     fn set(&mut self, index: u16, value: u8) {
         match index {
             0x0000..=0x3FFF => {
-                let bit8 = index & 0x100 >> 8;
-                if bit8 == 0 {
+                let bit = ((index & 0x100) >> 8) & 0b1;
+                if bit == 0 {
                     if value & 0x0F == 0x0A {
                         self.ram_enable = true;
                     } else {
@@ -287,14 +284,17 @@ impl Memory for MBC2 {
                     }
                 } else {
                     if value != 0 {
-                        self.rom_blank = value;
+                        self.rom_blank = value & 0x0F;
+                        if self.rom_blank == 0 {
+                            self.rom_blank = 1;
+                        }
                     }
                 }
             }
             0x4000..=0x7FFF => {}
             0xA000..=0xBFFF => {
                 if self.ram_enable {
-                    let ram_index = 0xA000 + (index - 0xA000 - 1) % 0x01FF;
+                    let ram_index = (index - 0xA000) % 0x0200;
                     self.ram[ram_index as usize] = value;
                 }
             }

@@ -176,7 +176,7 @@ impl Fetcher {
             Window => {
                 self.wy = self.mmu.borrow().get(0xFF4A);
                 self.wx = self.mmu.borrow().get(0xFF4B);
-                let bg_map_x = (self.scan_x as u16 - (self.wx - 7) as u16) % 256 / 8;
+                let bg_map_x = (self.scan_x as u16  + 7 - self.wx as u16) % 256 / 8;
                 let bg_map_y = (self.scan_y as u16 - self.wy as u16) % 256 / 8;
                 let bg_map_index = bg_map_x + bg_map_y * 32;
                 let bg_map_byte = self.mmu.borrow().get(window_map_start + bg_map_index);
@@ -473,7 +473,7 @@ impl FIFO {
         }
         let wy = self.mmu.borrow().get(0xFF4A);
         let wx = self.mmu.borrow().get(0xFF4B);
-        (x >= wx - 7) && (self.y >= wy)
+        (x + 7 >= wx ) && (self.y >= wy)
     }
     fn check_sprite(&self, x: u8) -> bool {
         let lcdc = self.mmu.borrow().get(0xFF40);
@@ -565,7 +565,7 @@ impl PPU {
             status: OAMScan,
             mmu,
             fifo,
-            lcd_enable: false,
+            lcd_enable: true,
             ly_buffer: Vec::new(),
             frame_buffer: [Color::WHITE as u32; WIDTH * HEIGHT],
         };

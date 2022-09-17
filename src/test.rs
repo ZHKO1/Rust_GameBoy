@@ -24,7 +24,7 @@ mod test {
                                 .duration_since(SystemTime::UNIX_EPOCH)
                                 .unwrap()
                                 .as_secs();
-                            if nowtime - start > 60 * 60 * 5 {
+                            if nowtime - start > 60 * 5 {
                                 panic!("too long time");
                             }
                             clocks = 0;
@@ -95,7 +95,7 @@ mod test {
                                 .duration_since(SystemTime::UNIX_EPOCH)
                                 .unwrap()
                                 .as_secs();
-                            if nowtime - start > 60 * 60 * 5 {
+                            if nowtime - start > 60 * 6 {
                                 panic!("too long time");
                             }
                             clocks = 0;
@@ -118,6 +118,15 @@ mod test {
                 // test!(rom_8mb, "emulator-only/mbc1/", "rom_8Mb");
                 // test!(rom_16mb, "emulator-only/mbc1/", "rom_16Mb");
                 test!(rom_512kb, "emulator-only/mbc1/", "rom_512kb");
+            }
+            mod mbc2 {
+                test!(bits_ramg, "emulator-only/mbc2/", "bits_ramg");
+                test!(bits_romb, "emulator-only/mbc2/", "bits_romb");
+                test!(bits_unused, "emulator-only/mbc2/", "bits_unused");
+                test!(ram, "emulator-only/mbc2/", "ram");
+                test!(rom_1mb, "emulator-only/mbc2/", "rom_1Mb");
+                test!(rom_2mb, "emulator-only/mbc2/", "rom_2Mb");
+                test!(rom_512kb, "emulator-only/mbc2/", "rom_512kb");
             }
         }
     }
