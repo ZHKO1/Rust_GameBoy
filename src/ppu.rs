@@ -1,4 +1,7 @@
+use crate::interrupt::Interrupt;
+use crate::interrupt::InterruptFlag::{VBlank as IVBlank, LCDSTAT as ILCDSTAT};
 use crate::memory::Memory;
+use crate::mmu::Mmu;
 use crate::ppu::FetcherStatus::{GetTile, GetTileDataHigh, GetTileDataLow};
 use crate::ppu::PixelType::{Sprite, Window, BG};
 use crate::ppu::PpuStatus::{Drawing, HBlank, OAMScan, VBlank};
@@ -14,13 +17,6 @@ enum Color {
     LightGray = 0x88C070,
     DarkGray = 0x346856,
     BlackGray = 0x081820,
-}
-
-pub enum PpuStatus {
-    OAMScan = 2,
-    Drawing = 3,
-    HBlank = 0,
-    VBlank = 1,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -61,7 +57,7 @@ struct Fetcher {
     palette: bool,
     bg_window_over_obj: bool,
     ptype: PixelType,
-    mmu: Rc<RefCell<dyn Memory>>,
+    mmu: Rc<RefCell<Mmu>>,
     status: FetcherStatus,
     tile_index: u16,
     tile_data_low: u8,
@@ -69,7 +65,7 @@ struct Fetcher {
     buffer: Vec<Pixel>,
 }
 impl Fetcher {
-    fn new(mmu: Rc<RefCell<dyn Memory>>) -> Self {
+    fn new(mmu: Rc<RefCell<Mmu>>) -> Self {
         Fetcher {
             scan_x: 0,
             scan_y: 0,
@@ -145,14 +141,13 @@ impl Fetcher {
         }
     }
     fn get_tile(&mut self) -> u16 {
-        let lcdc = self.mmu.borrow().get(0xFF40);
-        let bg_window_tile_area = check_bit(lcdc, 4);
-        let bg_tile_map_area = check_bit(lcdc, 3);
+        let bg_window_tile_data_area = self.mmu.borrow().ppu.lcdc.bg_window_tile_data_area;
+        let bg_tile_map_area = self.mmu.borrow().ppu.lcdc.bg_tile_map_area;
         let bg_map_start: u16 = match bg_tile_map_area {
             true => 0x9C00,
             false => 0x9800,
         };
-        let window_tile_map_area = check_bit(lcdc, 6);
+        let window_tile_map_area = self.mmu.borrow().ppu.lcdc.window_tile_map_area;
         let window_map_start: u16 = match window_tile_map_area {
             true => 0x9C00,
             false => 0x9800,
@@ -160,13 +155,13 @@ impl Fetcher {
 
         match self.ptype {
             BG => {
-                self.scy = self.mmu.borrow().get(0xFF42);
-                self.scx = self.mmu.borrow().get(0xFF43);
+                self.scy = self.mmu.borrow().ppu.scy;
+                self.scx = self.mmu.borrow().ppu.scx;
                 let bg_map_x = (self.scan_x as u16 + self.scx as u16) % 256 / 8;
                 let bg_map_y = (self.scan_y as u16 + self.scy as u16) % 256 / 8;
                 let bg_map_index = bg_map_x + bg_map_y * 32;
                 let bg_map_byte = self.mmu.borrow().get(bg_map_start + bg_map_index);
-                let tile_index: u16 = if bg_window_tile_area {
+                let tile_index: u16 = if bg_window_tile_data_area {
                     0x8000 + bg_map_byte as u16 * 8 * 2
                 } else {
                     (0x9000 as i32 + (bg_map_byte as i8) as i32 * 8 * 2) as u16
@@ -174,13 +169,13 @@ impl Fetcher {
                 tile_index
             }
             Window => {
-                self.wy = self.mmu.borrow().get(0xFF4A);
-                self.wx = self.mmu.borrow().get(0xFF4B);
-                let bg_map_x = (self.scan_x as u16  + 7 - self.wx as u16) % 256 / 8;
+                self.wy = self.mmu.borrow().ppu.wy;
+                self.wx = self.mmu.borrow().ppu.wx;
+                let bg_map_x = (self.scan_x as u16 + 7 - self.wx as u16) % 256 / 8;
                 let bg_map_y = (self.scan_y as u16 - self.wy as u16) % 256 / 8;
                 let bg_map_index = bg_map_x + bg_map_y * 32;
                 let bg_map_byte = self.mmu.borrow().get(window_map_start + bg_map_index);
-                let tile_index: u16 = if bg_window_tile_area {
+                let tile_index: u16 = if bg_window_tile_data_area {
                     0x8000 + bg_map_byte as u16 * 8 * 2
                 } else {
                     (0x9000 as i32 + (bg_map_byte as i8) as i32 * 8 * 2) as u16
@@ -267,12 +262,12 @@ impl Fetcher {
     }
     fn get_color_index(&self, ptype: PixelType, pvalue: u8, is_obp1: bool) -> u8 {
         let palette = match ptype {
-            BG | Window => self.mmu.borrow().get(0xFF47),
+            BG | Window => self.mmu.borrow().ppu.bgp,
             Sprite => {
                 if is_obp1 {
-                    self.mmu.borrow().get(0xFF49)
+                    self.mmu.borrow().ppu.op1
                 } else {
-                    self.mmu.borrow().get(0xFF48)
+                    self.mmu.borrow().ppu.op0
                 }
             }
         };
@@ -330,14 +325,14 @@ struct FIFO {
     x: u8,
     y: u8,
     status: FifoTrick,
-    mmu: Rc<RefCell<dyn Memory>>,
+    mmu: Rc<RefCell<Mmu>>,
     fetcher: Fetcher,
     sprite_queue: VecDeque<Pixel>,
     queue: VecDeque<Pixel>,
     oam: Vec<OAM>,
 }
 impl FIFO {
-    fn new(mmu: Rc<RefCell<dyn Memory>>) -> Self {
+    fn new(mmu: Rc<RefCell<Mmu>>) -> Self {
         let fetcher = Fetcher::new(mmu.clone());
         FIFO {
             x: 0,
@@ -466,18 +461,16 @@ impl FIFO {
         }
     }
     fn check_window(&self, x: u8) -> bool {
-        let lcdc = self.mmu.borrow().get(0xFF40);
-        let window_enable = check_bit(lcdc, 5);
+        let window_enable = self.mmu.borrow().ppu.lcdc.window_enable;
         if !window_enable {
             return false;
         }
-        let wy = self.mmu.borrow().get(0xFF4A);
-        let wx = self.mmu.borrow().get(0xFF4B);
-        (x + 7 >= wx ) && (self.y >= wy)
+        let wy = self.mmu.borrow().ppu.wy;
+        let wx = self.mmu.borrow().ppu.wx;
+        (x + 7 >= wx) && (self.y >= wy)
     }
     fn check_sprite(&self, x: u8) -> bool {
-        let lcdc = self.mmu.borrow().get(0xFF40);
-        let obj_enable = check_bit(lcdc, 1);
+        let obj_enable = self.mmu.borrow().ppu.lcdc.obj_enable;
         if !obj_enable {
             return false;
         }
@@ -548,21 +541,26 @@ impl FIFO {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum PpuStatus {
+    OAMScan = 2,
+    Drawing = 3,
+    HBlank = 0,
+    VBlank = 1,
+}
 pub struct PPU {
     cycles: u32,
-    status: PpuStatus,
     fifo: FIFO,
-    mmu: Rc<RefCell<dyn Memory>>,
+    mmu: Rc<RefCell<Mmu>>,
     ly_buffer: Vec<u32>,
     lcd_enable: bool,
     pub frame_buffer: [u32; WIDTH * HEIGHT],
 }
 impl PPU {
-    pub fn new(mmu: Rc<RefCell<dyn Memory>>) -> Self {
+    pub fn new(mmu: Rc<RefCell<Mmu>>) -> Self {
         let fifo = FIFO::new(mmu.clone());
         let mut ppu = PPU {
             cycles: 0,
-            status: OAMScan,
             mmu,
             fifo,
             lcd_enable: true,
@@ -573,21 +571,24 @@ impl PPU {
         ppu
     }
     pub fn trick(&mut self) {
-        let lcd_enable = self.get_lcd_enable();
+        let lcd_enable = self.mmu.borrow().ppu.lcdc.lcd_ppu_enable;
         if !lcd_enable {
             if self.lcd_enable == lcd_enable {
                 return;
             }
             self.cycles = 0;
-            self.status = OAMScan;
+            self.mmu.borrow_mut().ppu.stat.mode_flag = OAMScan;
             self.ly_buffer = Vec::new();
             self.frame_buffer = [Color::WHITE as u32; WIDTH * HEIGHT];
             self.fifo = FIFO::new(self.mmu.clone());
-            self.mmu.borrow_mut().set(0xFF44, 0);
+            self.mmu.borrow_mut().ppu.reset_ly();
         } else {
-            match self.status {
+            let mode_flag = self.mmu.borrow().ppu.stat.mode_flag;
+            match mode_flag {
                 OAMScan => {
                     if self.cycles == 0 {
+                        self.set_ly_interrupt();
+                        self.set_mode_interrupt();
                         let ly = self.get_ly();
                         self.fifo.init(ly);
                         let oams = self.oam_scan();
@@ -614,6 +615,9 @@ impl PPU {
                     self.cycles += 1;
                 }
                 HBlank => {
+                    if self.cycles == 0 {
+                        self.set_mode_interrupt();
+                    }
                     let ly = self.get_ly();
                     if self.cycles == 455 {
                         if ly == 143 {
@@ -628,6 +632,10 @@ impl PPU {
                     }
                 }
                 VBlank => {
+                    if self.cycles == 0 {
+                        self.set_ly_interrupt();
+                        self.set_mode_interrupt();
+                    }
                     let ly = self.get_ly();
                     if self.cycles == 455 {
                         if ly == 153 {
@@ -676,77 +684,292 @@ impl PPU {
         result
     }
     fn set_ly(&mut self, ly: u8) {
-        self.mmu.borrow_mut().set(0xFF44, ly);
-        let lyc = self.mmu.borrow().get(0xFF45);
-        let stat = self.mmu.borrow().get(0xFF41);
-        if ly == lyc {
-            self.mmu.borrow_mut().set(0xFF41, stat | (1 << 2));
-
-            let stat = self.mmu.borrow().get(0xFF41);
-            let enable = check_bit(stat, 6);
-            if enable {
-                let interrupt_flag = self.mmu.borrow().get(0xFF0F);
-                self.mmu.borrow_mut().set(0xFF0F, interrupt_flag | (1 << 1));
-            }
-        } else {
-            self.mmu.borrow_mut().set(0xFF41, stat & !(1 << 2));
-        };
+        self.mmu.borrow_mut().ppu.set_ly(ly);
+    }
+    fn set_ly_interrupt(&mut self) {
+        self.mmu.borrow_mut().ppu.set_ly_interrupt();
     }
     fn get_ly(&self) -> u8 {
-        self.mmu.borrow().get(0xFF44)
-    }
-    fn get_lcd_enable(&self) -> bool {
-        let lcdc = self.mmu.borrow().get(0xFF40);
-        let lcd_enable = check_bit(lcdc, 7);
-        lcd_enable
-    }
-    fn set_vblank_interrupt(&mut self) {
-        let d8 = self.mmu.borrow().get(0xFF0F);
-        self.mmu.borrow_mut().set(0xFF0F, d8 | 0x1);
+        self.mmu.borrow().ppu.get_ly()
     }
     fn set_mode(&mut self, mode: PpuStatus) {
-        let value;
         match mode {
             OAMScan => {
                 self.ly_buffer = Vec::new();
-
-                value = 0b10;
             }
-            Drawing => {
-                value = 0b11;
-            }
+            Drawing => {}
             HBlank => {
                 self.ly_buffer.clear();
                 self.fifo.clear();
+            }
+            VBlank => {}
+        };
+        self.mmu.borrow_mut().ppu.set_mode(mode);
+    }
+    fn set_mode_interrupt(&mut self) {
+        self.mmu.borrow_mut().ppu.set_mode_interrupt();
+    }
+}
 
-                value = 0b00;
+pub struct LCDC {
+    pub lcd_ppu_enable: bool,
+    pub window_tile_map_area: bool,
+    pub window_enable: bool,
+    pub bg_window_tile_data_area: bool,
+    pub bg_tile_map_area: bool,
+    pub obj_size: bool,
+    pub obj_enable: bool,
+    pub bg_window_enable: bool,
+}
+impl LCDC {
+    fn new() -> Self {
+        Self {
+            lcd_ppu_enable: true,
+            window_tile_map_area: true,
+            window_enable: true,
+            bg_window_tile_data_area: false,
+            bg_tile_map_area: false,
+            obj_size: false,
+            obj_enable: true,
+            bg_window_enable: true,
+        }
+    }
+    fn get_complete_bit(&self, index: u8) -> u8 {
+        match index {
+            7 => (self.lcd_ppu_enable as u8) << index,
+            6 => (self.window_tile_map_area as u8) << index,
+            5 => (self.window_enable as u8) << index,
+            4 => (self.bg_window_tile_data_area as u8) << index,
+            3 => (self.bg_tile_map_area as u8) << index,
+            2 => (self.obj_size as u8) << index,
+            1 => (self.obj_enable as u8) << index,
+            0 => (self.bg_window_enable as u8) << index,
+            _ => panic!("get_complete_bit index out of range"),
+        }
+    }
+}
+impl Memory for LCDC {
+    fn get(&self, index: u16) -> u8 {
+        assert_eq!(index, 0xFF40);
+        let lcd_ppu_enable = self.get_complete_bit(7);
+        let window_tile_map_area = self.get_complete_bit(6);
+        let window_enable = self.get_complete_bit(5);
+        let bg_window_tile_data_area = self.get_complete_bit(4);
+        let bg_tile_map_area = self.get_complete_bit(3);
+        let obj_size = self.get_complete_bit(2);
+        let obj_enable = self.get_complete_bit(1);
+        let bg_window_enable = self.get_complete_bit(0);
+        lcd_ppu_enable
+            | window_tile_map_area
+            | window_enable
+            | bg_window_tile_data_area
+            | bg_tile_map_area
+            | obj_size
+            | obj_enable
+            | bg_window_enable
+    }
+    fn set(&mut self, index: u16, value: u8) {
+        assert_eq!(index, 0xFF40);
+        self.lcd_ppu_enable = check_bit(value, 7);
+        self.window_tile_map_area = check_bit(value, 6);
+        self.window_enable = check_bit(value, 5);
+        self.bg_window_tile_data_area = check_bit(value, 4);
+        self.bg_tile_map_area = check_bit(value, 3);
+        self.obj_size = check_bit(value, 2);
+        self.obj_enable = check_bit(value, 1);
+        self.bg_window_enable = check_bit(value, 0);
+    }
+}
+
+pub struct STAT {
+    ly: Rc<RefCell<u8>>,
+    lyc: Rc<RefCell<u8>>,
+    pub lyc_ly_interrupt: bool,
+    pub mode2_interrupt: bool,
+    pub mode1_interrupt: bool,
+    pub mode0_interrupt: bool,
+    pub mode_flag: PpuStatus,
+}
+impl STAT {
+    fn new(ly: Rc<RefCell<u8>>, lyc: Rc<RefCell<u8>>) -> Self {
+        Self {
+            ly,
+            lyc,
+            lyc_ly_interrupt: false,
+            mode2_interrupt: false,
+            mode1_interrupt: false,
+            mode0_interrupt: false,
+            mode_flag: OAMScan,
+        }
+    }
+    fn get_complete_bit(&self, index: u8) -> u8 {
+        match index {
+            6 => (self.lyc_ly_interrupt as u8) << index,
+            5 => (self.mode2_interrupt as u8) << index,
+            4 => (self.mode1_interrupt as u8) << index,
+            3 => (self.mode0_interrupt as u8) << index,
+            2 => {
+                let ly = *self.ly.borrow();
+                let lyc = *self.lyc.borrow();
+                ((ly == lyc) as u8) << index
+            }
+            _ => panic!("get_complete_bit index out of range"),
+        }
+    }
+}
+impl Memory for STAT {
+    fn get(&self, index: u16) -> u8 {
+        assert_eq!(index, 0xFF41);
+        let lyc_ly_interrupt = self.get_complete_bit(6);
+        let mode2_interrupt = self.get_complete_bit(5);
+        let mode1_interrupt = self.get_complete_bit(4);
+        let mode0_interrupt = self.get_complete_bit(3);
+        let lyc_ly_flag = self.get_complete_bit(2);
+        let mode_flag = self.mode_flag.clone() as u8;
+        lyc_ly_interrupt
+            | mode2_interrupt
+            | mode1_interrupt
+            | mode0_interrupt
+            | lyc_ly_flag
+            | mode_flag
+    }
+    fn set(&mut self, index: u16, value: u8) {
+        assert_eq!(index, 0xFF41);
+        self.lyc_ly_interrupt = check_bit(value, 6);
+        self.mode2_interrupt = check_bit(value, 5);
+        self.mode1_interrupt = check_bit(value, 4);
+        self.mode0_interrupt = check_bit(value, 3);
+    }
+}
+
+pub struct PpuMmu {
+    interrupt: Rc<RefCell<Interrupt>>,
+    pub lcdc: LCDC,
+    pub stat: STAT,
+    ly: Rc<RefCell<u8>>,
+    lyc: Rc<RefCell<u8>>,
+    pub scy: u8,
+    pub scx: u8,
+    pub wx: u8,
+    pub wy: u8,
+    pub bgp: u8,
+    pub op0: u8,
+    pub op1: u8,
+    vram: [u8; 0x9FFF - 0x8000 + 1],
+    oam: [u8; 0xFE9F - 0xFE00 + 1],
+}
+impl PpuMmu {
+    pub fn new(interrupt: Rc<RefCell<Interrupt>>) -> Self {
+        let lcdc = LCDC::new();
+        let ly = Rc::new(RefCell::new(0));
+        let lyc = Rc::new(RefCell::new(0));
+        let stat = STAT::new(ly.clone(), lyc.clone());
+        Self {
+            interrupt,
+            lcdc,
+            stat,
+            ly,
+            lyc,
+            scy: 0,
+            scx: 0,
+            wx: 0,
+            wy: 0,
+            bgp: 0,
+            op0: 0,
+            op1: 0,
+            vram: [0; 0x9FFF - 0x8000 + 1],
+            oam: [0; 0xFE9F - 0xFE00 + 1],
+        }
+    }
+    pub fn set_mode(&mut self, mode: PpuStatus) {
+        self.stat.mode_flag = mode;
+    }
+    pub fn set_mode_interrupt(&mut self) {
+        let mode = self.stat.mode_flag;
+        match mode {
+            OAMScan => {
+                let enable = self.stat.mode2_interrupt;
+                if enable {
+                    self.interrupt.borrow_mut().set_flag(ILCDSTAT);
+                }
             }
             VBlank => {
-                self.set_vblank_interrupt();
-                value = 0b01;
+                let enable = self.stat.mode1_interrupt;
+                if enable {
+                    self.interrupt.borrow_mut().set_flag(ILCDSTAT);
+                }
+                self.interrupt.borrow_mut().set_flag(IVBlank);
             }
-        };
-        self.status = mode;
-        let d8 = self.mmu.borrow().get(0xFF41);
-        let d8 = d8 & 0b11111100 | value;
-        self.mmu.borrow_mut().set(0xFF41, d8);
-        match self.status {
-            OAMScan | HBlank | VBlank => self.set_mode_interrupt(),
+            HBlank => {
+                let enable = self.stat.mode0_interrupt;
+                if enable {
+                    self.interrupt.borrow_mut().set_flag(ILCDSTAT);
+                }
+            }
             Drawing => {}
         };
     }
-    fn set_mode_interrupt(&mut self) {
-        let stat = self.mmu.borrow().get(0xFF41);
-        let bit = match self.status {
-            OAMScan => 2,
-            Drawing => panic!("Drawing interrupt?"),
-            HBlank => 3,
-            VBlank => 4,
-        };
-        let enable = check_bit(stat, bit);
-        if enable {
-            let interrupt_flag = self.mmu.borrow().get(0xFF0F);
-            self.mmu.borrow_mut().set(0xFF0F, interrupt_flag | (1 << 1));
+    pub fn set_ly(&mut self, ly: u8) {
+        *self.ly.borrow_mut() = ly;
+    }
+    pub fn set_ly_interrupt(&mut self) {
+        let ly = self.get_ly();
+        let lyc = self.get_lyc();
+        if ly == lyc {
+            let enable = self.stat.lyc_ly_interrupt;
+            if enable {
+                self.interrupt.borrow_mut().set_flag(ILCDSTAT);
+            }
+        }
+    }
+    pub fn reset_ly(&mut self) {
+        *self.ly.borrow_mut() = 0;
+    }
+    pub fn get_ly(&self) -> u8 {
+        *self.ly.borrow()
+    }
+    pub fn set_lyc(&mut self, ly: u8) {
+        *self.lyc.borrow_mut() = ly;
+    }
+    pub fn get_lyc(&self) -> u8 {
+        *self.lyc.borrow()
+    }
+}
+impl Memory for PpuMmu {
+    fn get(&self, index: u16) -> u8 {
+        match index {
+            0xff40 => self.lcdc.get(index),
+            0xff41 => self.stat.get(index),
+            0xff42 => self.scy,
+            0xff43 => self.scx,
+            0xff44 => self.get_ly(),
+            0xff45 => self.get_lyc(),
+            0xff47 => self.bgp,
+            0xff48 => self.op0,
+            0xff49 => self.op1,
+            0xff4A => self.wy,
+            0xff4B => self.wx,
+            0x8000..=0x9FFF => self.vram[(index - 0x8000) as usize],
+            0xFE00..=0xFE9F => self.oam[(index - 0xFE00) as usize],
+            _ => panic!("PpuMmu out of range"),
+        }
+    }
+    fn set(&mut self, index: u16, value: u8) {
+        match index {
+            0xff40 => self.lcdc.set(index, value),
+            0xff41 => self.stat.set(index, value),
+            0xff42 => self.scy = value,
+            0xff43 => self.scx = value,
+            0xff44 => {}
+            0xff45 => self.set_lyc(value),
+            0xff47 => self.bgp = value,
+            0xff48 => self.op0 = value,
+            0xff49 => self.op1 = value,
+            0xff4A => self.wy = value,
+            0xff4B => self.wx = value,
+            0x8000..=0x9FFF => self.vram[(index - 0x8000) as usize] = value,
+            0xFE00..=0xFE9F => self.oam[(index - 0xFE00) as usize] = value,
+            _ => panic!("PpuMmu out of range"),
         }
     }
 }

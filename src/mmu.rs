@@ -2,6 +2,7 @@ use crate::cartridge::{open, Cartridge};
 use crate::interrupt::Interrupt;
 use crate::joypad::JoyPad;
 use crate::memory::Memory;
+use crate::ppu::PpuMmu;
 use crate::util::read_rom;
 use std::cell::RefCell;
 use std::path::Path;
@@ -45,6 +46,7 @@ pub struct Mmu {
     cartridge: Box<dyn Cartridge>,
     other: MemoryBlock,
     pub joypad: JoyPad,
+    pub ppu: PpuMmu,
     interrupt: Rc<RefCell<Interrupt>>,
     pub log_msg: Vec<u8>,
 }
@@ -58,11 +60,13 @@ impl Mmu {
         let interrupt = Interrupt::new();
         let rc_refcell_interrupt = Rc::new(RefCell::new(interrupt));
         let joypad = JoyPad::new(rc_refcell_interrupt.clone());
+        let ppu = PpuMmu::new(rc_refcell_interrupt.clone());
         let mut mmu = Self {
             boot,
             cartridge,
             other,
             joypad,
+            ppu,
             interrupt: rc_refcell_interrupt,
             log_msg: vec![],
         };
@@ -116,26 +120,26 @@ impl Memory for Mmu {
                 }
             }
             0x0100..=0x7FFF => self.cartridge.get(index),
-            0x8000..=0x9FFF => self.other.get(index),
+            0x8000..=0x9FFF => self.ppu.get(index),
             0xA000..=0xBFFF => self.cartridge.get(index),
-            0xC000..=0xFEFF => self.other.get(index),
+            0xFE00..=0xFE9F => self.ppu.get(index),
             0xFF00 => self.joypad.get(index),
-            0xFF01..=0xFF0E => self.other.get(index),
             0xFF0F => self.interrupt.borrow().get(index),
-            0xFF10..=0xFFFF => self.other.get(index),
+            0xFF40..=0xff45 | 0xFF47..=0xFF4B => self.ppu.get(index),
+            _ => self.other.get(index),
         }
     }
     fn set(&mut self, index: u16, value: u8) {
         self.bind_event(index, value);
         match index {
             0x0000..=0x7FFF => self.cartridge.set(index, value),
-            0x8000..=0x9FFF => self.other.set(index, value),
+            0x8000..=0x9FFF => self.ppu.set(index, value),
             0xA000..=0xBFFF => self.cartridge.set(index, value),
-            0xC000..=0xFEFF => self.other.set(index, value),
+            0xFE00..=0xFE9F => self.ppu.set(index, value),
             0xFF00 => self.joypad.set(index, value),
-            0xFF01..=0xFF0E => self.other.set(index, value),
             0xFF0F => self.interrupt.borrow_mut().set(index, value),
-            0xFF10..=0xFFFF => self.other.set(index, value),
+            0xFF40..=0xff45 | 0xFF47..=0xFF4B => self.ppu.set(index, value),
+            _ => self.other.set(index, value),
         }
     }
 }
