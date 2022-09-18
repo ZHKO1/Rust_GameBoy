@@ -577,12 +577,14 @@ impl PPU {
                 return;
             }
             self.cycles = 0;
-            self.mmu.borrow_mut().ppu.stat.mode_flag = OAMScan;
             self.ly_buffer = Vec::new();
             self.frame_buffer = [Color::WHITE as u32; WIDTH * HEIGHT];
             self.fifo = FIFO::new(self.mmu.clone());
             self.mmu.borrow_mut().ppu.reset_ly();
         } else {
+            if self.lcd_enable != lcd_enable {
+                self.mmu.borrow_mut().ppu.stat.mode_flag = OAMScan;
+            }
             let mode_flag = self.mmu.borrow().ppu.stat.mode_flag;
             match mode_flag {
                 OAMScan => {
