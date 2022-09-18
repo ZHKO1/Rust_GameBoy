@@ -609,15 +609,13 @@ impl PPU {
                                 self.frame_buffer[(ly as usize * WIDTH + scan_x) as usize] = *pixel;
                             }
                             self.set_mode(HBlank);
+                            self.set_mode_interrupt();
                         }
                     } else {
                     }
                     self.cycles += 1;
                 }
                 HBlank => {
-                    if self.cycles == 0 {
-                        self.set_mode_interrupt();
-                    }
                     let ly = self.get_ly();
                     if self.cycles == 455 {
                         if ly == 143 {
