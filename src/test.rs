@@ -78,8 +78,7 @@ mod test {
                     use crate::gameboy::GameBoy;
                     use std::time::SystemTime;
                     let bios_path = "";
-                    let rom_path =
-                        format!("{}{}{}{}", "tests/mts/", $path, $game, ".gb");
+                    let rom_path = format!("{}{}{}{}", "tests/mts/", $path, $game, ".gb");
                     let mut gameboy = GameBoy::new(bios_path, rom_path);
                     let expect = vec![3, 5, 8, 13, 21, 34];
                     let start = SystemTime::now()
@@ -127,6 +126,17 @@ mod test {
                 test!(rom_1mb, "emulator-only/mbc2/", "rom_1Mb");
                 test!(rom_2mb, "emulator-only/mbc2/", "rom_2Mb");
                 test!(rom_512kb, "emulator-only/mbc2/", "rom_512kb");
+            }
+
+            mod mbc5 {
+                test!(rom_1mb, "emulator-only/mbc5/", "rom_1Mb");
+                test!(rom_2mb, "emulator-only/mbc5/", "rom_2Mb");
+                test!(rom_4mb, "emulator-only/mbc5/", "rom_4Mb");
+                test!(rom_8mb, "emulator-only/mbc5/", "rom_8Mb");
+                test!(rom_16mb, "emulator-only/mbc5/", "rom_16Mb");
+                test!(rom_32mb, "emulator-only/mbc5/", "rom_32Mb");
+                test!(rom_64mb, "emulator-only/mbc5/", "rom_64Mb");
+                test!(rom_512kb, "emulator-only/mbc5/", "rom_512kb");
             }
         }
     }

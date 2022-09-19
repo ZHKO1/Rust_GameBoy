@@ -514,22 +514,26 @@ struct MBC5 {
     rom_blank_high_bit: u8,
     ram_blank: u8,
     ram_enable: bool,
+    max_rom_blank_bit_num: usize,
     save_path: PathBuf,
 }
 impl MBC5 {
     fn new(rom: Vec<u8>, ram: Vec<u8>, path: impl AsRef<Path>) -> Self {
+        let len = rom.len();
+        let max_rom_blank_bit_num = len / (4 * 16 * 16 * 16);
         Self {
             rom,
             ram,
-            rom_blank_low_bit: 0b00000001,
-            rom_blank_high_bit: 0b0,
+            rom_blank_low_bit: 0x01,
+            rom_blank_high_bit: 0x0,
             ram_blank: 0,
             ram_enable: false,
+            max_rom_blank_bit_num,
             save_path: PathBuf::from(path.as_ref()),
         }
     }
-    fn get_rom_blank_index(&self) -> u8 {
-        self.rom_blank_high_bit << 8 + self.rom_blank_low_bit
+    fn get_rom_blank_index(&self) -> usize {
+        ((self.rom_blank_high_bit as usize) << 8)  | self.rom_blank_low_bit as usize
     }
 }
 impl Memory for MBC5 {
@@ -538,6 +542,7 @@ impl Memory for MBC5 {
             0..=0x3FFF => self.rom[index as usize],
             0x4000..=0x7FFF => {
                 let rom_blank_index = self.get_rom_blank_index();
+                let rom_blank_index = rom_blank_index & ((self.max_rom_blank_bit_num - 1));
                 let rom_index =
                     rom_blank_index as usize * 0x4000 as usize + (index - 0x4000) as usize;
                 self.rom[rom_index]
