@@ -1,3 +1,4 @@
+use crate::cartridge::Stable;
 use crate::cpu::{Cpu, Timer};
 use crate::joypad::JoyPadKey;
 use crate::mmu::Mmu;
@@ -15,9 +16,9 @@ pub struct GameBoy {
 }
 
 impl GameBoy {
-    pub fn new(bios_path: impl AsRef<Path>, rom_path: impl AsRef<Path>) -> Self {
-        let skip_boot = bios_path.as_ref().to_str().unwrap().is_empty();
-        let mmu = Mmu::new(bios_path, rom_path);
+    pub fn new(bios: Vec<u8>, rom: Vec<u8>) -> Self {
+        let skip_boot = bios.is_empty();
+        let mmu = Mmu::new(bios, rom);
         let rc_refcell_mmu = Rc::new(RefCell::new(mmu));
         let mut cpu = Cpu::new(rc_refcell_mmu.clone());
         if skip_boot {
@@ -42,5 +43,14 @@ impl GameBoy {
     }
     pub fn input(&mut self, key: JoyPadKey, is_pressed: bool) {
         self.mmu.borrow_mut().joypad.input(key, is_pressed);
+    }
+}
+
+impl Stable for GameBoy {
+    fn save_sav(&self) -> Vec<u8>{
+        self.mmu.borrow().save_sav()  
+    }
+    fn load_sav(&mut self, ram: Vec<u8>){
+        self.mmu.borrow_mut().load_sav(ram);        
     }
 }

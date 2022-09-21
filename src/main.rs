@@ -1,8 +1,13 @@
 extern crate log;
 extern crate simplelog;
+use rust_gameboy::cartridge::Stable;
+use rust_gameboy::util::{read_ram, read_rom};
 use rust_gameboy::{display::Display, gameboy::GameBoy, joypad};
 use simplelog::*;
-use std::fs::File;
+use std::error::Error;
+use std::io::Write;
+use std::{fs::File, path::PathBuf};
+// use std::time::SystemTime;
 
 fn main() {
     CombinedLogger::init(vec![
@@ -23,11 +28,25 @@ fn main() {
     // let bios_path = "tests/DMG_ROM.bin";
     let bios_path = "";
     let rom_path = "tests/Tetris.gb";
-    let mut gameboy = GameBoy::new(bios_path, rom_path);
+    let rom_path = "tests/Red.gb";
+    let bios = read_rom(bios_path).unwrap_or(vec![]);
+    let rom = read_rom(rom_path).unwrap();
+    let mut gameboy = GameBoy::new(bios, rom);
+    let ram_path = PathBuf::from(rom_path).with_extension("sav");
+    let ram_path = ram_path.to_str().unwrap();
+    let ram_result = read_rom(ram_path);
+    if let Ok(ram) = ram_result {
+        gameboy.load_sav(ram);
+    }
     let mut display = Display::init(160, 144);
     let mut cycle: u32 = 0;
-    // let mut start_time = Local::now().time();
-    // let mut frames = 0;
+    /*
+    let mut start_time = SystemTime::now()
+    .duration_since(SystemTime::UNIX_EPOCH)
+    .unwrap()
+    .as_millis();
+    let mut frames = 0;
+    */
     let mut buffer = vec![0; 160 * 144];
 
     let keys = vec![
@@ -45,12 +64,24 @@ fn main() {
         /*
         if cycle == 0 {
             if frames == 59 {
-                println!("60帧所耗时间 = {}", Local::now().time() - start_time);
-                start_time = Local::now().time();
+                println!("60帧所耗时间 = {}", SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() - start_time);
+                start_time = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_millis();;
                 frames = 0;
             }
         }
          */
+        if display.window.is_key_down(minifb::Key::O) {
+            let ram = gameboy.save_sav();
+            File::create(ram_path)
+            .and_then(|mut file| file.write_all(&ram))
+            .unwrap();
+        } 
         cycle += 1;
         gameboy.trick();
         for (rk, vk) in &keys {

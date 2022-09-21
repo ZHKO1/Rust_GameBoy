@@ -1,4 +1,4 @@
-use crate::cartridge::{open, Cartridge};
+use crate::cartridge::{open, Cartridge, Stable};
 use crate::interrupt::Interrupt;
 use crate::joypad::JoyPad;
 use crate::memory::Memory;
@@ -52,11 +52,14 @@ pub struct Mmu {
 }
 
 impl Mmu {
-    pub fn new(bios_path: impl AsRef<Path>, rom_path: impl AsRef<Path>) -> Self {
-        let cartridge = open(rom_path);
+    pub fn new(bios: Vec<u8>, rom: Vec<u8>) -> Self {
+        let cartridge = open(rom);
         let other = MemoryBlock::new();
         let mut boot = [0; 0x100];
-        let skip_boot = bios_path.as_ref().to_str().unwrap().is_empty();
+        let skip_boot = bios.is_empty();
+        if !skip_boot {
+            boot.copy_from_slice(&bios[..0x100]);
+        }
         let interrupt = Interrupt::new();
         let rc_refcell_interrupt = Rc::new(RefCell::new(interrupt));
         let joypad = JoyPad::new(rc_refcell_interrupt.clone());
@@ -72,10 +75,7 @@ impl Mmu {
         };
         if skip_boot {
             mmu.set(0xFF50, 1);
-        } else {
-            let boot_rom = read_rom(bios_path).unwrap();
-            boot.copy_from_slice(&boot_rom[..0x100]);
-        };
+        }
         mmu.set(0xFF40, 0b11100011);
         mmu
     }
@@ -141,5 +141,14 @@ impl Memory for Mmu {
             0xFF40..=0xff45 | 0xFF47..=0xFF4B => self.ppu.set(index, value),
             _ => self.other.set(index, value),
         }
+    }
+}
+
+impl Stable for Mmu {
+    fn save_sav(&self) -> Vec<u8> {
+        self.cartridge.save_sav()
+    }
+    fn load_sav(&mut self, ram: Vec<u8>) {
+        self.cartridge.load_sav(ram);
     }
 }

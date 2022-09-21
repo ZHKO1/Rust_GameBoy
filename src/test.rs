@@ -6,9 +6,12 @@ mod test {
                 fn $func() {
                     use crate::gameboy::GameBoy;
                     use std::time::SystemTime;
+                    use crate::util::{read_ram, read_rom};
                     let bios_path = "";
                     let rom_path = format!("{}{}{}{}", "tests/gb-test-roms/", $path, $game, ".gb");
-                    let mut gameboy = GameBoy::new(bios_path, rom_path);
+                    let bios = read_rom(bios_path).unwrap_or(vec![]);
+                    let rom = read_rom(rom_path).unwrap();
+                    let mut gameboy = GameBoy::new(bios, rom);
                     let expect = format!("{}", $expect);
                     let expect = expect.as_bytes().to_vec();
                     let start = SystemTime::now()
@@ -77,9 +80,12 @@ mod test {
                 fn $func() {
                     use crate::gameboy::GameBoy;
                     use std::time::SystemTime;
+                    use crate::util::{read_ram, read_rom};
                     let bios_path = "";
                     let rom_path = format!("{}{}{}{}", "tests/mts/", $path, $game, ".gb");
-                    let mut gameboy = GameBoy::new(bios_path, rom_path);
+                    let bios = read_rom(bios_path).unwrap_or(vec![]);
+                    let rom = read_rom(rom_path).unwrap();
+                    let mut gameboy = GameBoy::new(bios, rom);
                     let expect = vec![3, 5, 8, 13, 21, 34];
                     let start = SystemTime::now()
                         .duration_since(SystemTime::UNIX_EPOCH)

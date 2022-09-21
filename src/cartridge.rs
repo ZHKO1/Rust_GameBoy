@@ -1,52 +1,47 @@
 use crate::memory::Memory;
-use crate::util::{read_ram, read_rom};
-use std::fs::File;
-use std::io::Write;
-use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use MBC1Mode::{Ram, Rom};
 
-pub fn open(path: impl AsRef<Path>) -> Box<dyn Cartridge> {
-    let rom = read_rom(path.as_ref()).unwrap();
+pub fn open(rom: Vec<u8>) -> Box<dyn Cartridge> {
     if rom.len() < 0x150 {
         panic!("rom.len()={} < 0x150", rom.len());
     }
     let ram_size = get_ram_size(rom[0x0149 as usize]);
-    let save_path = PathBuf::from(path.as_ref()).with_extension("sav");
-    let rtc_path = PathBuf::from(path.as_ref()).with_extension("rtc");
     let cart: Box<dyn Cartridge> = match rom[0x0147 as usize] {
         0x00 => Box::new(RomOnly::new(rom)),
-        0x01 => Box::new(MBC1::new(rom, vec![0; ram_size], "")),
-        0x02 => Box::new(MBC1::new(rom, vec![0; ram_size], "")),
+        0x01 => Box::new(MBC1::new(rom, vec![0; ram_size])),
+        0x02 => Box::new(MBC1::new(rom, vec![0; ram_size])),
         0x03 => {
-            let ram = read_ram(save_path.clone(), ram_size);
-            Box::new(MBC1::new(rom, ram, save_path))
+            // let ram = read_ram(save_path.clone(), ram_size);
+            let ram = vec![0; ram_size];
+            Box::new(MBC1::new(rom, ram))
         }
         0x05 => {
             let ram_size = 512;
-            Box::new(MBC2::new(rom, vec![0; ram_size], ""))
+            Box::new(MBC2::new(rom, vec![0; ram_size]))
         }
         0x06 => {
             let ram_size = 512;
-            let ram = read_ram(save_path.clone(), ram_size);
-            Box::new(MBC2::new(rom, ram, save_path))
+            // let ram = read_ram(save_path.clone(), ram_size);
+            let ram = vec![0; ram_size];
+            Box::new(MBC2::new(rom, ram))
         }
-        0x0F => Box::new(MBC3::new(rom, vec![0; ram_size], save_path, rtc_path)),
+        0x0F => Box::new(MBC3::new(rom, vec![0; ram_size])),
         0x010 => {
-            let ram = read_ram(save_path.clone(), ram_size);
-            Box::new(MBC3::new(rom, ram, save_path, rtc_path))
+            let ram = vec![0; ram_size];
+            Box::new(MBC3::new(rom, ram))
         }
-        0x011 => Box::new(MBC3::new(rom, vec![0; ram_size], "", "")),
-        0x012 => Box::new(MBC3::new(rom, vec![0; ram_size], "", "")),
+        0x011 => Box::new(MBC3::new(rom, vec![0; ram_size])),
+        0x012 => Box::new(MBC3::new(rom, vec![0; ram_size])),
         0x013 => {
-            let ram = read_ram(save_path.clone(), ram_size);
-            Box::new(MBC3::new(rom, ram, save_path, ""))
+            let ram = vec![0; ram_size];
+            Box::new(MBC3::new(rom, ram))
         }
-        0x019 => Box::new(MBC5::new(rom, vec![0; ram_size], "")),
-        0x01A => Box::new(MBC5::new(rom, vec![0; ram_size], "")),
+        0x019 => Box::new(MBC5::new(rom, vec![0; ram_size])),
+        0x01A => Box::new(MBC5::new(rom, vec![0; ram_size])),
         0x01B => {
-            let ram = read_ram(save_path.clone(), ram_size);
-            Box::new(MBC5::new(rom, ram, save_path))
+            let ram = vec![0; ram_size];
+            Box::new(MBC5::new(rom, ram))
         }
         _ => panic!("unkown cartridge type"),
     };
@@ -89,7 +84,10 @@ impl Cartridge for MBC3 {}
 impl Cartridge for MBC5 {}
 
 pub trait Stable {
-    fn save(&self) {}
+    fn save_sav(&self) -> Vec<u8> {
+        vec![]
+    }
+    fn load_sav(&mut self, _ram: Vec<u8>) {}
 }
 
 struct RomOnly {
@@ -106,9 +104,7 @@ impl Memory for RomOnly {
     }
     fn set(&mut self, _: u16, _: u8) {}
 }
-impl Stable for RomOnly {
-    fn save(&self) {}
-}
+impl Stable for RomOnly {}
 
 enum MBC1Mode {
     Rom, //  16Mbit ROM/8KByte RAM
@@ -122,10 +118,9 @@ struct MBC1 {
     rom_blank_bit: u8,
     ram_blank_bit: u8,
     ram_enable: bool,
-    save_path: PathBuf,
 }
 impl MBC1 {
-    fn new(rom: Vec<u8>, ram: Vec<u8>, path: impl AsRef<Path>) -> Self {
+    fn new(rom: Vec<u8>, ram: Vec<u8>) -> Self {
         let len = rom.len();
         let max_rom_blank_bit_num = (len / (4 * 16 * 16 * 16)) as u8;
         MBC1 {
@@ -136,7 +131,6 @@ impl MBC1 {
             rom_blank_bit: 0b00001,
             ram_blank_bit: 0b00,
             ram_enable: false,
-            save_path: PathBuf::from(path.as_ref()),
         }
     }
     fn get_rom_blank_index(&self) -> u8 {
@@ -191,7 +185,6 @@ impl Memory for MBC1 {
                     self.ram_enable = true;
                 } else {
                     self.ram_enable = false;
-                    self.save();
                 }
             }
             0x2000..=0x3FFF => {
@@ -219,13 +212,11 @@ impl Memory for MBC1 {
     }
 }
 impl Stable for MBC1 {
-    fn save(&self) {
-        if self.save_path.to_str().unwrap().is_empty() {
-            return;
-        }
-        File::create(self.save_path.clone())
-            .and_then(|mut file| file.write_all(&self.ram))
-            .unwrap();
+    fn save_sav(&self) -> Vec<u8> {
+        self.ram.clone()
+    }
+    fn load_sav(&mut self, ram: Vec<u8>) {
+        self.ram = ram;
     }
 }
 
@@ -235,10 +226,9 @@ struct MBC2 {
     rom_blank: u8,
     ram_enable: bool,
     max_rom_blank_bit_num: u8,
-    save_path: PathBuf,
 }
 impl MBC2 {
-    fn new(rom: Vec<u8>, ram: Vec<u8>, path: impl AsRef<Path>) -> Self {
+    fn new(rom: Vec<u8>, ram: Vec<u8>) -> Self {
         let len = rom.len();
         let max_rom_blank_bit_num = (len / (4 * 16 * 16 * 16)) as u8;
         MBC2 {
@@ -247,7 +237,6 @@ impl MBC2 {
             rom_blank: 1,
             ram_enable: false,
             max_rom_blank_bit_num,
-            save_path: PathBuf::from(path.as_ref()),
         }
     }
 }
@@ -280,7 +269,6 @@ impl Memory for MBC2 {
                         self.ram_enable = true;
                     } else {
                         self.ram_enable = false;
-                        self.save();
                     }
                 } else {
                     if value != 0 {
@@ -303,13 +291,11 @@ impl Memory for MBC2 {
     }
 }
 impl Stable for MBC2 {
-    fn save(&self) {
-        if self.save_path.to_str().unwrap().is_empty() {
-            return;
-        }
-        File::create(self.save_path.clone())
-            .and_then(|mut file| file.write_all(&self.ram))
-            .unwrap();
+    fn save_sav(&self) -> Vec<u8> {
+        self.ram.clone()
+    }
+    fn load_sav(&mut self, ram: Vec<u8>) {
+        self.ram = ram;
     }
 }
 
@@ -320,21 +306,13 @@ struct MBC3RTC {
     dl: u8,
     dh: u8,
     zero: u64,
-    save_path: PathBuf,
 }
 impl MBC3RTC {
-    fn new(path: impl AsRef<Path>) -> Self {
-        let zero = match std::fs::read(&path) {
-            Ok(file) => {
-                let mut tmp: [u8; 8] = [0; 8];
-                tmp.copy_from_slice(&file);
-                u64::from_be_bytes(tmp)
-            }
-            Err(_) => SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-        };
+    fn new() -> Self {
+        let zero = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         Self {
             s: 0,
             m: 0,
@@ -342,7 +320,6 @@ impl MBC3RTC {
             dl: 0,
             dh: 0,
             zero,
-            save_path: PathBuf::from(path.as_ref()),
         }
     }
     fn latch_clock(&mut self) {
@@ -391,13 +368,13 @@ impl Memory for MBC3RTC {
     }
 }
 impl Stable for MBC3RTC {
-    fn save(&self) {
-        if self.save_path.to_str().unwrap().is_empty() {
-            return;
-        }
-        File::create(self.save_path.clone())
-            .and_then(|mut file| file.write_all(&self.zero.to_be_bytes()))
-            .unwrap();
+    fn save_sav(&self) -> Vec<u8> {
+        self.zero.to_be_bytes().to_vec().clone()
+    }
+    fn load_sav(&mut self, ram: Vec<u8>) {
+        let mut tmp: [u8; 8] = [0; 8];
+        tmp.copy_from_slice(&ram);
+        self.zero = u64::from_be_bytes(tmp);
     }
 }
 struct MBC3 {
@@ -408,24 +385,17 @@ struct MBC3 {
     ram_blank: u8,
     ram_enable: bool,
     last_write_value: u8,
-    save_path: PathBuf,
 }
 impl MBC3 {
-    fn new(
-        rom: Vec<u8>,
-        ram: Vec<u8>,
-        ram_path: impl AsRef<Path>,
-        rtc_path: impl AsRef<Path>,
-    ) -> Self {
+    fn new(rom: Vec<u8>, ram: Vec<u8>) -> Self {
         MBC3 {
-            rtc: MBC3RTC::new(rtc_path),
+            rtc: MBC3RTC::new(),
             rom,
             ram,
             rom_blank: 1,
             ram_blank: 0,
             ram_enable: false,
             last_write_value: 0x01,
-            save_path: PathBuf::from(ram_path.as_ref()),
         }
     }
 }
@@ -461,7 +431,6 @@ impl Memory for MBC3 {
                     self.ram_enable = true;
                 } else {
                     self.ram_enable = false;
-                    self.save();
                 }
             }
             0x2000..=0x3FFF => {
@@ -496,14 +465,20 @@ impl Memory for MBC3 {
     }
 }
 impl Stable for MBC3 {
-    fn save(&self) {
-        if self.save_path.to_str().unwrap().is_empty() {
-            return;
+    fn save_sav(&self) -> Vec<u8> {
+        let rtc = self.rtc.save_sav();
+        [rtc, self.ram.clone()].concat()
+    }
+    fn load_sav(&mut self, ram: Vec<u8>) {
+        let mut rtc: Vec<u8> = vec![0; 8];
+        for i in 0..=7 {
+            rtc.push(ram[i]);
         }
-        self.rtc.save();
-        File::create(self.save_path.clone())
-            .and_then(|mut file| file.write_all(&self.ram))
-            .unwrap();
+        self.rtc.load_sav(rtc);
+        self.ram = vec![];
+        for i in 7..ram.len() {
+            self.ram.push(ram[i]);
+        }
     }
 }
 
@@ -515,10 +490,9 @@ struct MBC5 {
     ram_blank: u8,
     ram_enable: bool,
     max_rom_blank_bit_num: usize,
-    save_path: PathBuf,
 }
 impl MBC5 {
-    fn new(rom: Vec<u8>, ram: Vec<u8>, path: impl AsRef<Path>) -> Self {
+    fn new(rom: Vec<u8>, ram: Vec<u8>) -> Self {
         let len = rom.len();
         let max_rom_blank_bit_num = len / (4 * 16 * 16 * 16);
         Self {
@@ -529,11 +503,10 @@ impl MBC5 {
             ram_blank: 0,
             ram_enable: false,
             max_rom_blank_bit_num,
-            save_path: PathBuf::from(path.as_ref()),
         }
     }
     fn get_rom_blank_index(&self) -> usize {
-        ((self.rom_blank_high_bit as usize) << 8)  | self.rom_blank_low_bit as usize
+        ((self.rom_blank_high_bit as usize) << 8) | self.rom_blank_low_bit as usize
     }
 }
 impl Memory for MBC5 {
@@ -542,7 +515,7 @@ impl Memory for MBC5 {
             0..=0x3FFF => self.rom[index as usize],
             0x4000..=0x7FFF => {
                 let rom_blank_index = self.get_rom_blank_index();
-                let rom_blank_index = rom_blank_index & ((self.max_rom_blank_bit_num - 1));
+                let rom_blank_index = rom_blank_index & (self.max_rom_blank_bit_num - 1);
                 let rom_index =
                     rom_blank_index as usize * 0x4000 as usize + (index - 0x4000) as usize;
                 self.rom[rom_index]
@@ -566,7 +539,6 @@ impl Memory for MBC5 {
                     self.ram_enable = true;
                 } else {
                     self.ram_enable = false;
-                    self.save();
                 }
             }
             0x2000..=0x2FFF => {
@@ -592,12 +564,10 @@ impl Memory for MBC5 {
     }
 }
 impl Stable for MBC5 {
-    fn save(&self) {
-        if self.save_path.to_str().unwrap().is_empty() {
-            return;
-        }
-        File::create(self.save_path.clone())
-            .and_then(|mut file| file.write_all(&self.ram))
-            .unwrap();
+    fn save_sav(&self) -> Vec<u8> {
+        self.ram.clone()
+    }
+    fn load_sav(&mut self, ram: Vec<u8>) {
+        self.ram = ram;
     }
 }
