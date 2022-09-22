@@ -6,7 +6,7 @@ mod test {
                 fn $func() {
                     use crate::gameboy::GameBoy;
                     use std::time::SystemTime;
-                    use crate::util::{read_ram, read_rom};
+                    use crate::util::{read_rom};
                     let bios_path = "";
                     let rom_path = format!("{}{}{}{}", "tests/gb-test-roms/", $path, $game, ".gb");
                     let bios = read_rom(bios_path).unwrap_or(vec![]);
@@ -80,7 +80,7 @@ mod test {
                 fn $func() {
                     use crate::gameboy::GameBoy;
                     use std::time::SystemTime;
-                    use crate::util::{read_ram, read_rom};
+                    use crate::util::{read_rom};
                     let bios_path = "";
                     let rom_path = format!("{}{}{}{}", "tests/mts/", $path, $game, ".gb");
                     let bios = read_rom(bios_path).unwrap_or(vec![]);

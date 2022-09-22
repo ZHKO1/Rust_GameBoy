@@ -1,10 +1,9 @@
 extern crate log;
 extern crate simplelog;
 use rust_gameboy::cartridge::Stable;
-use rust_gameboy::util::{read_ram, read_rom};
+use rust_gameboy::util::{read_rom};
 use rust_gameboy::{display::Display, gameboy::GameBoy, joypad};
 use simplelog::*;
-use std::error::Error;
 use std::io::Write;
 use std::{fs::File, path::PathBuf};
 // use std::time::SystemTime;
@@ -28,7 +27,7 @@ fn main() {
     // let bios_path = "tests/DMG_ROM.bin";
     let bios_path = "";
     let rom_path = "tests/Tetris.gb";
-    let rom_path = "tests/Red.gb";
+    // let rom_path = "tests/Red.gb";
     let bios = read_rom(bios_path).unwrap_or(vec![]);
     let rom = read_rom(rom_path).unwrap();
     let mut gameboy = GameBoy::new(bios, rom);

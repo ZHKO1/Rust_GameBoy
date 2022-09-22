@@ -3,9 +3,7 @@ use crate::interrupt::Interrupt;
 use crate::joypad::JoyPad;
 use crate::memory::Memory;
 use crate::ppu::PpuMmu;
-use crate::util::read_rom;
 use std::cell::RefCell;
-use std::path::Path;
 use std::rc::Rc;
 
 struct MemoryBlock {

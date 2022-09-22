@@ -3,7 +3,7 @@ use crate::cpu::{Cpu, Timer};
 use crate::joypad::JoyPadKey;
 use crate::mmu::Mmu;
 use crate::ppu::PPU;
-use std::{cell::RefCell, path::Path, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 const WIDTH: usize = 160;
 const HEIGHT: usize = 144;
