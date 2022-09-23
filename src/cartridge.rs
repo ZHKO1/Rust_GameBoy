@@ -54,7 +54,7 @@ fn get_ram_size(code: u8) -> usize {
         0x02 => 8,
         0x03 => 32,
         0x04 => 128,
-        0x05 => 128,
+        0x05 => 64,
         _ => panic!("get_ram_size failed"),
     };
     result * 1024
