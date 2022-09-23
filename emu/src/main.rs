@@ -1,29 +1,13 @@
-extern crate log;
-extern crate simplelog;
-use rust_gameboy::cartridge::Stable;
-use rust_gameboy::util::{read_rom};
-use rust_gameboy::{display::Display, gameboy::GameBoy, joypad};
-use simplelog::*;
+use rust_gameboy_core::cartridge::Stable;
+use rust_gameboy_core::gameboy::GameBoy;
+use rust_gameboy_core::joypad;
+use rust_gameboy_core::util::{read_rom};
+use rust_gameboy::{display::Display};
 use std::io::Write;
 use std::{fs::File, path::PathBuf};
 // use std::time::SystemTime;
 
 fn main() {
-    CombinedLogger::init(vec![
-        TermLogger::new(
-            LevelFilter::Warn,
-            Config::default(),
-            TerminalMode::Mixed,
-            ColorChoice::Auto,
-        ),
-        WriteLogger::new(
-            LevelFilter::Info,
-            Config::default(),
-            File::create("my_rust_binary.log").unwrap(),
-        ),
-    ])
-    .unwrap();
-
     // let bios_path = "tests/DMG_ROM.bin";
     let bios_path = "";
     let rom_path = "tests/Tetris.gb";
