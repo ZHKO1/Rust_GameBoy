@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <title>game-boy</title>
+  <style>
+    body {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #fps {
+      white-space: pre;
+      font-family: monospace;
+    }
+
+    #game-of-life-canvas{
+      border: 1px solid red;
+    }
+  </style>
+</head>
+
+<body>
+  <input type="file" id="rompicker"></input>
+  <button id="start">start</button>
+  <div id="fps"></div>
+  <canvas id="game-of-life-canvas" width="160" height="144"></canvas>
+  <script src="./bootstrap.js" type="module"></script>
+</body>
+
+</html>

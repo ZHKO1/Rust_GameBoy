@@ -1,2 +1,2 @@
 [workspace]
-members = ["emu", "lib"]
+members = ["emu", "lib", "emu-wasm"]

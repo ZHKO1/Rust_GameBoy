@@ -5,8 +5,8 @@ use crate::mmu::Mmu;
 use crate::ppu::PPU;
 use std::{cell::RefCell, rc::Rc};
 
-const WIDTH: usize = 160;
-const HEIGHT: usize = 144;
+pub const WIDTH: usize = 160;
+pub const HEIGHT: usize = 144;
 
 pub struct GameBoy {
     pub mmu: Rc<RefCell<Mmu>>,
