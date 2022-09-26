@@ -1,4 +1,4 @@
-import { Gameboy } from "../pkg/rust_gameboy_wasm.js";
+import { Gameboy, JoyPadKey } from "../pkg/rust_gameboy_wasm.js";
 import { memory } from '../pkg/rust_gameboy_wasm_bg';
 
 class Emulator {
@@ -84,6 +84,61 @@ class Emulator {
     }
     this.ctx.putImageData(imageData, 0, 0);
   }
+  mapKeyCodeToInput(keycode) {
+    let joypad_input = null;
+
+    switch (keycode) {
+      case "ArrowUp":
+        joypad_input = JoyPadKey.Up;
+        break;
+      case "ArrowDown":
+        joypad_input = JoyPadKey.Down;
+        break;
+      case "ArrowLeft":
+        joypad_input = JoyPadKey.Left;
+        break;
+      case "ArrowRight":
+        joypad_input = JoyPadKey.Right;
+        break;
+      case "KeyX":
+        joypad_input = JoyPadKey.A;
+        break;
+      case "KeyZ":
+        joypad_input = JoyPadKey.B;
+        break;
+      case "Enter":
+        joypad_input = JoyPadKey.Start;
+        break;
+      case "Backspace":
+        joypad_input = JoyPadKey.Select;
+        break;
+      default:
+        break;
+    }
+
+    return joypad_input;
+  }
+
+  handleKey(keyEvent, down) {
+    if (this.gameboy == null) {
+      return;
+    }
+
+    const keyCode = keyEvent.code;
+    const joypad_input = this.mapKeyCodeToInput(keyCode);
+
+    if (joypad_input != null && this.running) {
+      this.gameboy.input(joypad_input, down);
+    }
+  }
 }
 
 const emulator = new Emulator();
+
+document.addEventListener("keydown", (event) => {
+  emulator.handleKey(event, true);
+});
+
+document.addEventListener("keyup", (event) => {
+  emulator.handleKey(event, false);
+});

@@ -1,8 +1,8 @@
+use rust_gameboy::display::Display;
 use rust_gameboy_core::cartridge::Stable;
 use rust_gameboy_core::gameboy::GameBoy;
 use rust_gameboy_core::joypad;
-use rust_gameboy_core::util::{read_rom};
-use rust_gameboy::{display::Display};
+use rust_gameboy_core::util::read_rom;
 use std::io::Write;
 use std::{fs::File, path::PathBuf};
 // use std::time::SystemTime;
@@ -62,19 +62,19 @@ fn main() {
         if display.window.is_key_down(minifb::Key::O) {
             let ram = gameboy.save_sav();
             File::create(ram_path)
-            .and_then(|mut file| file.write_all(&ram))
-            .unwrap();
-        } 
+                .and_then(|mut file| file.write_all(&ram))
+                .unwrap();
+        }
         cycle += 1;
         gameboy.trick();
-        for (rk, vk) in &keys {
-            if display.window.is_key_down(*rk) {
-                gameboy.input(vk.clone(), true);
-            } else {
-                gameboy.input(vk.clone(), false);
+        if cycle == 70223 {
+            for (rk, vk) in &keys {
+                if display.window.is_key_down(*rk) {
+                    gameboy.input(vk.clone(), true);
+                } else {
+                    gameboy.input(vk.clone(), false);
+                }
             }
-        }
-        if cycle == 70224 {
             let frame_buffer = gameboy.get_frame_buffer();
             buffer.clone_from_slice(frame_buffer);
             display.update_with_buffer(&mut buffer);
