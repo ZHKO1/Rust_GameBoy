@@ -1,6 +1,6 @@
 use rust_gameboy::display::Display;
 use rust_gameboy_core::cartridge::Stable;
-use rust_gameboy_core::gameboy::GameBoy;
+use rust_gameboy_core::gameboy::{GameBoy, WIDTH, HEIGHT};
 use rust_gameboy_core::joypad;
 use rust_gameboy_core::util::read_rom;
 use std::io::Write;
@@ -21,7 +21,7 @@ fn main() {
     if let Ok(ram) = ram_result {
         gameboy.load_sav(ram);
     }
-    let mut display = Display::init(160, 144);
+    let mut display = Display::init(WIDTH, HEIGHT);
     let mut cycle: u32 = 0;
     /*
     let mut start_time = SystemTime::now()
@@ -30,7 +30,7 @@ fn main() {
     .as_millis();
     let mut frames = 0;
     */
-    let mut buffer = vec![0; 160 * 144];
+    let mut buffer = vec![0; WIDTH * HEIGHT];
 
     let keys = vec![
         (minifb::Key::Right, joypad::JoyPadKey::Right),

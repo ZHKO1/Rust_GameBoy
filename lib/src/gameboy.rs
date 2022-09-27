@@ -3,10 +3,8 @@ use crate::cpu::{Cpu, Timer};
 use crate::joypad::JoyPadKey;
 use crate::mmu::Mmu;
 use crate::ppu::PPU;
+pub use crate::ppu::{HEIGHT, WIDTH};
 use std::{cell::RefCell, rc::Rc};
-
-pub const WIDTH: usize = 160;
-pub const HEIGHT: usize = 144;
 
 struct JoyPadEvent {
     key: JoyPadKey,

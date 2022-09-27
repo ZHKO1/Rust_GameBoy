@@ -27,7 +27,7 @@ mod test {
                                 .duration_since(SystemTime::UNIX_EPOCH)
                                 .unwrap()
                                 .as_secs();
-                            if nowtime - start > 60 * 5 {
+                            if nowtime - start > 60 * 10 {
                                 panic!("too long time");
                             }
                             clocks = 0;
@@ -100,7 +100,7 @@ mod test {
                                 .duration_since(SystemTime::UNIX_EPOCH)
                                 .unwrap()
                                 .as_secs();
-                            if nowtime - start > 60 * 6 {
+                            if nowtime - start > 60 * 10 {
                                 panic!("too long time");
                             }
                             clocks = 0;

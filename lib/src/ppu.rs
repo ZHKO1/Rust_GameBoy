@@ -9,8 +9,8 @@ use crate::util::check_bit;
 use std::collections::VecDeque;
 use std::{cell::RefCell, rc::Rc};
 
-const WIDTH: usize = 160;
-const HEIGHT: usize = 144;
+pub const WIDTH: usize = 160;
+pub const HEIGHT: usize = 144;
 
 enum Color {
     WHITE = 0xE0F8D0,
@@ -632,9 +632,12 @@ impl PPU {
                     }
                 }
                 VBlank => {
+                    let ly = self.get_ly();
                     if self.cycles == 0 {
                         self.set_ly_interrupt();
-                        self.set_mode_interrupt();
+                        if ly == 144 {
+                            self.set_mode_interrupt();
+                        }
                     }
                     let ly = self.get_ly();
                     if self.cycles == 455 {
