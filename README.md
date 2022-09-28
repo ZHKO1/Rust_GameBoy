@@ -1,6 +1,15 @@
-# rust-gameboy
+# Rust-gameboy
 A gameboy emulator written in Rust.  
 Try it here: https://rust-gameboy.netlify.app/
+
+# Play
+
+Controls:
+* Arrows for direction keys
+* `X`: A button
+* `Z`: B button
+* `Enter`: start button
+* `Backspace`: select button
 
 ## Reference
 - https://www.youtube.com/watch?v=HyzD8pNlpwI&t=46m55s

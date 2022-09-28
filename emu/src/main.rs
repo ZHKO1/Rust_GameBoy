@@ -37,8 +37,8 @@ fn main() {
         (minifb::Key::Up, joypad::JoyPadKey::Up),
         (minifb::Key::Left, joypad::JoyPadKey::Left),
         (minifb::Key::Down, joypad::JoyPadKey::Down),
-        (minifb::Key::Z, joypad::JoyPadKey::A),
-        (minifb::Key::X, joypad::JoyPadKey::B),
+        (minifb::Key::Z, joypad::JoyPadKey::B),
+        (minifb::Key::X, joypad::JoyPadKey::A),
         (minifb::Key::Space, joypad::JoyPadKey::Select),
         (minifb::Key::Enter, joypad::JoyPadKey::Start),
     ];
