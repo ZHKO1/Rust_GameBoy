@@ -11,7 +11,7 @@ crate-type = ["cdylib", "rlib"]
 default = ["console_error_panic_hook"]
 
 [dependencies]
-rust_gameboy_core = { path = "../lib" }
+rust_gameboy_core = { path = "../lib", features = ["wasm"] }
 wasm-bindgen = "0.2.70"
 console_error_panic_hook = { version = "0.1.6", optional = true }
 wee_alloc = { version = "0.4.5", optional = true }

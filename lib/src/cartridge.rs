@@ -1,5 +1,5 @@
 use crate::memory::Memory;
-use std::time::SystemTime;
+use chrono::Utc;
 use MBC1Mode::{Ram, Rom};
 
 pub fn open(rom: Vec<u8>) -> Box<dyn Cartridge> {
@@ -309,10 +309,7 @@ struct MBC3RTC {
 }
 impl MBC3RTC {
     fn new() -> Self {
-        let zero = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let zero = Utc::now().timestamp() as u64;
         Self {
             s: 0,
             m: 0,
@@ -323,10 +320,7 @@ impl MBC3RTC {
         }
     }
     fn latch_clock(&mut self) {
-        let time = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let time = Utc::now().timestamp() as u64;
         let duration = time - self.zero;
         self.s = (duration % 60) as u8;
         self.m = ((duration / 60) % 60) as u8;
