@@ -1,9 +1,20 @@
 name: ci
 on:
-  pull_request:
   push:
-    branches:
-    - master
+    branches: [ master ]
+    paths:
+      - ".github/workflows/**"
+      - "emu/**"
+      - "emu-wasm/**"
+      - "lib/**"
+  pull_request:
+    branches: [ master ]
+    paths:
+      - ".github/workflows/**"
+      - "emu/**"
+      - "emu-wasm/**"
+      - "lib/**"
+  workflow_dispatch:
 
 jobs:
   check:
@@ -44,3 +55,43 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
+
+  deploy:
+    name: Deploy WASM emulator
+    if: github.ref == 'refs/heads/master'
+    needs:
+      - test
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./emu-wasm
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: jetli/wasm-pack-action@v0.3.0
+      with:
+        version: 'latest'
+    - uses: actions/setup-node@v2
+      with:
+        node-version: '12'
+    - name: Build WASM
+      run: wasm-pack build
+    - name: Install dependencies
+      run: cd ./www && npm install
+    - name: Build web app
+      run: cd ./www && npm run build
+    - name: Deploy to Netlify
+      uses: nwtgck/actions-netlify@v1.2
+      with:
+        publish-dir: './emu-wasm/www/dist'
+        production-branch: master
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        deploy-message: "Deploy from GitHub Actions"
+        enable-pull-request-comment: false
+        enable-commit-comment: true
+        overwrites-pull-request-comment: true
+      env:
+        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      timeout-minutes: 1
