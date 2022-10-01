@@ -314,9 +314,6 @@ impl OAM {
         }
     }
     fn is_scaned(&self, ly: u8) -> bool {
-        if self.y < 16 {
-            return false;
-        }
         let height = if self.obj_size { 16 } else { 8 };
         let y_start = self.y as i32 - 16;
         let y_end = self.y as i32 + height - 16;
