@@ -203,7 +203,7 @@ impl Fetcher {
             }
             Sprite => {
                 let height = if self.obj_size { 16 } else { 8 };
-                let mut tile_pixel_y = (self.scan_y as u16 - (self.oam_y - 16) as u16) % height;
+                let mut tile_pixel_y = (self.scan_y as u16 + 16 - self.oam_y as u16) % height;
                 if self.y_flip {
                     tile_pixel_y = (height - 1) - tile_pixel_y;
                 }
@@ -227,7 +227,7 @@ impl Fetcher {
             }
             Sprite => {
                 let height = if self.obj_size { 16 } else { 8 };
-                let mut tile_pixel_y = (self.scan_y as u16 - (self.oam_y - 16) as u16) % height;
+                let mut tile_pixel_y = (self.scan_y as u16 + 16 - self.oam_y as u16) % height;
                 if self.y_flip {
                     tile_pixel_y = (height - 1) - tile_pixel_y;
                 }
@@ -421,8 +421,24 @@ impl FIFO {
                     for (index, pixel) in self.fetcher.buffer.iter().enumerate() {
                         if index < sprite_queue_len {
                             let origin_pixel = self.sprite_queue[index];
-                            if pixel.pvalue != 0 && pixel.oam_priority < origin_pixel.oam_priority {
-                                self.queue[index] = *pixel;
+                            match origin_pixel.ptype {
+                                BG | Window => {
+                                    if pixel.pvalue != 0 {
+                                        self.queue[index] = *pixel;
+                                    }
+                                }
+                                Sprite => {
+                                    if pixel.pvalue == 0 && origin_pixel.pvalue == 0 {}
+                                    if pixel.pvalue == 0 && origin_pixel.pvalue != 0 {}
+                                    if pixel.pvalue != 0 && origin_pixel.pvalue == 0 {
+                                        self.queue[index] = *pixel;
+                                    }
+                                    if pixel.pvalue != 0 && origin_pixel.pvalue != 0 {
+                                        if pixel.oam_priority < origin_pixel.oam_priority {
+                                            self.queue[index] = *pixel;
+                                        }
+                                    }
+                                }
                             }
                         } else {
                             self.sprite_queue.push_back(*pixel);
