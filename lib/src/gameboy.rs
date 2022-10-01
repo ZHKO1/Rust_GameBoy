@@ -5,6 +5,12 @@ use crate::mmu::Mmu;
 use crate::ppu::PPU;
 pub use crate::ppu::{HEIGHT, WIDTH};
 use std::{cell::RefCell, rc::Rc};
+/*
+use std::fs::File;
+use simplelog::*;
+extern crate log;
+extern crate simplelog;
+*/
 
 struct JoyPadEvent {
     key: JoyPadKey,
@@ -55,6 +61,22 @@ pub struct GameBoy {
 
 impl GameBoy {
     pub fn new(bios: Vec<u8>, rom: Vec<u8>) -> Self {
+        /*
+        CombinedLogger::init(vec![
+            TermLogger::new(
+                LevelFilter::Warn,
+                Config::default(),
+                TerminalMode::Mixed,
+                ColorChoice::Auto,
+            ),
+            WriteLogger::new(
+                LevelFilter::Info,
+                Config::default(),
+                File::create("my_rust_binary.log").unwrap(),
+            ),
+        ])
+        .unwrap();
+        */
         let skip_boot = bios.is_empty();
         let mmu = Mmu::new(bios, rom);
         let rc_refcell_mmu = Rc::new(RefCell::new(mmu));

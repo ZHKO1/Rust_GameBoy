@@ -6,6 +6,7 @@ use crate::ppu::FetcherStatus::{GetTile, GetTileDataHigh, GetTileDataLow};
 use crate::ppu::PixelType::{Sprite, Window, BG};
 use crate::ppu::PpuStatus::{Drawing, HBlank, OAMScan, VBlank};
 use crate::util::check_bit;
+// use log::info;
 use std::collections::VecDeque;
 use std::{cell::RefCell, rc::Rc};
 
@@ -586,10 +587,8 @@ impl PPU {
             self.frame_buffer = [Color::WHITE as u32; WIDTH * HEIGHT];
             self.fifo = FIFO::new(self.mmu.clone());
             self.mmu.borrow_mut().ppu.reset_ly();
+            self.mmu.borrow_mut().ppu.stat.mode_flag = HBlank;
         } else {
-            if self.lcd_enable != lcd_enable {
-                self.mmu.borrow_mut().ppu.stat.mode_flag = OAMScan;
-            }
             let mode_flag = self.mmu.borrow().ppu.stat.mode_flag;
             match mode_flag {
                 OAMScan => {
@@ -624,7 +623,7 @@ impl PPU {
                 }
                 HBlank => {
                     let ly = self.get_ly();
-                    if self.cycles == 455 {
+                    if self.cycles >= 455 {
                         if ly == 143 {
                             self.set_mode(VBlank);
                         } else {
