@@ -592,11 +592,12 @@ impl PPU {
         ppu.set_mode(OAMScan);
         ppu
     }
-    pub fn trick(&mut self) {
+    pub fn trick(&mut self) -> bool {
         let lcd_enable = self.mmu.borrow().ppu.lcdc.lcd_ppu_enable;
+        let mut is_refresh = false;
         if !lcd_enable {
             if self.lcd_enable == lcd_enable {
-                return;
+                return is_refresh;
             }
             self.cycles = 0;
             self.ly_buffer = Vec::new();
@@ -604,6 +605,7 @@ impl PPU {
             self.fifo = FIFO::new(self.mmu.clone());
             self.mmu.borrow_mut().ppu.reset_ly();
             self.mmu.borrow_mut().ppu.stat.mode_flag = HBlank;
+            is_refresh = true;
         } else {
             let mode_flag = self.mmu.borrow().ppu.stat.mode_flag;
             match mode_flag {
@@ -656,6 +658,7 @@ impl PPU {
                     if self.cycles == 0 {
                         self.set_ly_interrupt();
                         if ly == 144 {
+                            is_refresh = true;
                             self.set_mode_interrupt();
                         }
                     }
@@ -675,6 +678,7 @@ impl PPU {
             }
         }
         self.lcd_enable = lcd_enable;
+        is_refresh
     }
     fn get_pixel_color(&self, color_value: u8) -> u32 {
         match color_value {

@@ -6,8 +6,8 @@ Try it here: https://rust-gameboy.netlify.app/
 
 Controls:
 * Arrows for direction keys
-* `X`: A button
-* `Z`: B button
+* `Z`: A button
+* `X`: B button
 * `Enter`: start button
 * `Backspace`: select button
 

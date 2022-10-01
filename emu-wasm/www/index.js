@@ -100,10 +100,10 @@ class Emulator {
       case "ArrowRight":
         joypad_input = JoyPadKey.Right;
         break;
-      case "KeyX":
+      case "KeyZ":
         joypad_input = JoyPadKey.A;
         break;
-      case "KeyZ":
+      case "KeyX":
         joypad_input = JoyPadKey.B;
         break;
       case "Enter":

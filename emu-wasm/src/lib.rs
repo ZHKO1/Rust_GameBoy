@@ -58,9 +58,7 @@ impl Gameboy {
     }
 
     pub fn frame(&mut self) -> *const u32 {
-        for _ in 0..=70223 {
-            self.inner.trick();
-        }
+        while !self.inner.trick() {}
         let frame_buffer = self.inner.get_frame_buffer();
         frame_buffer.as_ptr()
     }

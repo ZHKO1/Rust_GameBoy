@@ -94,16 +94,17 @@ impl GameBoy {
             inputs: JoyPadInputs::new(),
         }
     }
-    pub fn trick(&mut self) {
+    pub fn trick(&mut self) -> bool {
         self.cpu.trick();
         self.timer.trick();
-        self.ppu.trick();
+        let is_refresh = self.ppu.trick();
         for event in self.inputs.0.iter() {
             self.mmu
                 .borrow_mut()
                 .joypad
                 .input(event.key.clone(), event.is_pressed);
         }
+        is_refresh
     }
     pub fn get_frame_buffer(&self) -> &[u32; WIDTH * HEIGHT] {
         &self.ppu.frame_buffer

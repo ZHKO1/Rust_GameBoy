@@ -1,6 +1,6 @@
 use rust_gameboy::display::Display;
 use rust_gameboy_core::cartridge::Stable;
-use rust_gameboy_core::gameboy::{GameBoy, WIDTH, HEIGHT};
+use rust_gameboy_core::gameboy::{GameBoy, HEIGHT, WIDTH};
 use rust_gameboy_core::joypad;
 use rust_gameboy_core::util::read_rom;
 use std::io::Write;
@@ -11,7 +11,7 @@ fn main() {
     // let bios_path = "tests/DMG_ROM.bin";
     let bios_path = "";
     let rom_path = "tests/Tetris.gb";
-    // let rom_path = "tests/Red.gb";
+    // let rom_path = "tests/red_ue.gb";
     let bios = read_rom(bios_path).unwrap_or(vec![]);
     let rom = read_rom(rom_path).unwrap();
     let mut gameboy = GameBoy::new(bios, rom);
@@ -22,7 +22,6 @@ fn main() {
         gameboy.load_sav(ram);
     }
     let mut display = Display::init(WIDTH, HEIGHT);
-    let mut cycle: u32 = 0;
     /*
     let mut start_time = SystemTime::now()
     .duration_since(SystemTime::UNIX_EPOCH)
@@ -37,37 +36,38 @@ fn main() {
         (minifb::Key::Up, joypad::JoyPadKey::Up),
         (minifb::Key::Left, joypad::JoyPadKey::Left),
         (minifb::Key::Down, joypad::JoyPadKey::Down),
-        (minifb::Key::Z, joypad::JoyPadKey::B),
-        (minifb::Key::X, joypad::JoyPadKey::A),
+        (minifb::Key::X, joypad::JoyPadKey::B),
+        (minifb::Key::Z, joypad::JoyPadKey::A),
         (minifb::Key::Space, joypad::JoyPadKey::Select),
         (minifb::Key::Enter, joypad::JoyPadKey::Start),
     ];
 
     while display.is_open() {
         /*
-        if cycle == 0 {
-            if frames == 59 {
-                println!("60帧所耗时间 = {}", SystemTime::now()
+        if frames == 59 {
+            println!(
+                "60帧所耗时间 = {}",
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis()
+                    - start_time
+            );
+            start_time = SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap()
-                .as_millis() - start_time);
-                start_time = SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_millis();;
-                frames = 0;
-            }
+                .as_millis();
+            frames = 0;
         }
-         */
+        */
         if display.window.is_key_down(minifb::Key::O) {
             let ram = gameboy.save_sav();
             File::create(ram_path)
                 .and_then(|mut file| file.write_all(&ram))
                 .unwrap();
         }
-        cycle += 1;
-        gameboy.trick();
-        if cycle == 70223 {
+        let is_refresh = gameboy.trick();
+        if is_refresh {
             for (rk, vk) in &keys {
                 if display.window.is_key_down(*rk) {
                     gameboy.input(vk.clone(), true);
@@ -78,7 +78,6 @@ fn main() {
             let frame_buffer = gameboy.get_frame_buffer();
             buffer.clone_from_slice(frame_buffer);
             display.update_with_buffer(&mut buffer);
-            cycle = 0;
             // frames += 1;
         }
     }
