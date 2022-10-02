@@ -10,17 +10,14 @@ class Emulator {
 
     this.canvas = document.getElementById("game-of-life-canvas");
     this.ctx = this.canvas.getContext("2d");
-
-    this.romPicker = document.getElementById("rompicker");
-    this.startButton = document.getElementById("start");
-    this.startButton.onclick = () => this.start();
   }
 
-  init(romBuffer) {
+  init(biosBuffer, romBuffer) {
+    const biosData = new Uint8Array(biosBuffer);
     const romData = new Uint8Array(romBuffer);
 
     try {
-      this.gameboy = new Gameboy([], romData);
+      this.gameboy = new Gameboy(biosData, romData);
     } catch (e) {
       console.error(e);
       throw e;
@@ -29,24 +26,9 @@ class Emulator {
     console.log("Gameboy loaded!");
   }
 
-  async loadRom() {
-    if (this.romPicker.files.length == 0) {
-      alert("Please load a ROM first!");
-      return;
-    }
-
-    const romFile = this.romPicker.files[0];
-    this.romName = romFile.name;
-
-    return await romFile.arrayBuffer();
-  }
-
-  start() {
-    this.loadRom().then((romBuffer) => {
-      this.init(romBuffer);
-      this.run();
-      // this.renderFrame()
-    });
+  start(biosBuffer, romBuffer) {
+    this.init(biosBuffer, romBuffer);
+    this.run();
   }
 
   run() {
@@ -134,6 +116,31 @@ class Emulator {
 }
 
 const emulator = new Emulator();
+async function get_file(path) {
+  return fetch(path)
+    .then(i => i.arrayBuffer())
+}
+
+async function init() {
+  let bios_promise = get_file(`roms/DMG_ROM.bin`);
+  let rom_promise = get_file(`roms/elden ring gb v1.0.gb`);
+  let result = await Promise.all([bios_promise, rom_promise]);
+  emulator.start(result[0], result[1]);
+}
+
+init();
+
+let start = document.querySelector(".webicon");
+start.addEventListener("click", (event) => {
+  let romPicker = document.getElementById("rompicker");
+  romPicker.addEventListener("change", async (event) => {
+    let bios = await get_file(`roms/DMG_ROM.bin`);
+    const romFile = romPicker.files[0];
+    let rom = await romFile.arrayBuffer();
+    emulator.start(bios, rom);
+  });
+  romPicker.click();
+});
 
 document.addEventListener("keydown", (event) => {
   emulator.handleKey(event, true);
