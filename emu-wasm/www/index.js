@@ -122,8 +122,8 @@ async function get_file(path) {
 }
 
 async function init() {
-  let bios_promise = get_file(`roms/DMG_ROM.bin`);
-  let rom_promise = get_file(`roms/elden ring gb v1.0.gb`);
+  let bios_promise = get_file(`assets/DMG_ROM.bin`);
+  let rom_promise = get_file(`assets/elden ring gb v1.0.gb`);
   let result = await Promise.all([bios_promise, rom_promise]);
   emulator.start(result[0], result[1]);
 }
@@ -134,7 +134,7 @@ let start = document.querySelector(".webicon");
 start.addEventListener("click", (event) => {
   let romPicker = document.getElementById("rompicker");
   romPicker.addEventListener("change", async (event) => {
-    let bios = await get_file(`roms/DMG_ROM.bin`);
+    let bios = await get_file(`assets/DMG_ROM.bin`);
     const romFile = romPicker.files[0];
     let rom = await romFile.arrayBuffer();
     emulator.start(bios, rom);
