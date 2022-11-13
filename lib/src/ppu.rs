@@ -589,7 +589,7 @@ impl PPU {
             mmu,
             fifo,
             lcd_enable: true,
-            ly_buffer: Vec::new(),
+            ly_buffer: Vec::with_capacity(WIDTH),
             frame_buffer: [Color::WHITE as u32; WIDTH * HEIGHT],
         };
         ppu.set_mode(OAMScan);
@@ -603,7 +603,7 @@ impl PPU {
                 return is_refresh;
             }
             self.cycles = 0;
-            self.ly_buffer = Vec::new();
+            self.ly_buffer = Vec::with_capacity(WIDTH);
             self.frame_buffer = [Color::WHITE as u32; WIDTH * HEIGHT];
             self.fifo = FIFO::new(self.mmu.clone());
             self.mmu.borrow_mut().ppu.reset_ly();
@@ -697,7 +697,7 @@ impl PPU {
     fn oam_scan(&self) -> Vec<OAM> {
         let ly = self.get_ly();
         let obj_size = self.mmu.borrow().ppu.lcdc.obj_size;
-        let mut result = vec![];
+        let mut result = Vec::with_capacity(10);
         for index in 00..40 {
             let oam_address = 0xFE00 + (index as u16) * 4;
             let y = self.mmu.borrow().get(oam_address);
@@ -726,7 +726,7 @@ impl PPU {
     fn set_mode(&mut self, mode: PpuStatus) {
         match mode {
             OAMScan => {
-                self.ly_buffer = Vec::new();
+                self.ly_buffer = Vec::with_capacity(WIDTH);
             }
             Drawing => {}
             HBlank => {
