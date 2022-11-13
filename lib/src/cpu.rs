@@ -66,18 +66,33 @@ struct Registers {
     pc: u16,
 }
 impl Registers {
-    fn new() -> Self {
-        Registers {
-            a: 0,
-            b: 0,
-            c: 0,
-            d: 0,
-            e: 0,
-            f: 0,
-            h: 0,
-            l: 0,
-            sp: 0,
-            pc: 0,
+    fn new(mode: GameBoyMode) -> Self {
+        if mode == GameBoyMode::GBC {
+            Registers {
+                a: 0x11,
+                b: 0,
+                c: 0,
+                d: 0xFF,
+                e: 0x56,
+                f: 0x80,
+                h: 0,
+                l: 0x0D,
+                sp: 0,
+                pc: 0,
+            }
+        } else {
+            Registers {
+                a: 0x01,
+                b: 0,
+                c: 0x13,
+                d: 0x00,
+                e: 0xD8,
+                f: 0x00,
+                h: 0x01,
+                l: 0x4D,
+                sp: 0,
+                pc: 0,
+            }
         }
     }
     fn set_af(&mut self, value: u16) {
@@ -137,7 +152,7 @@ pub struct Cpu {
 
 impl Cpu {
     pub fn new(mode: GameBoyMode, mmu: Rc<RefCell<Mmu>>, skip_bios: bool) -> Self {
-        let reg = Registers::new();
+        let reg = Registers::new(mode);
         let mut cpu = Cpu {
             mode,
             reg,
