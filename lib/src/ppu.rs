@@ -1,3 +1,4 @@
+use crate::gameboy_mode::GameBoyMode;
 use crate::interrupt::Interrupt;
 use crate::interrupt::InterruptFlag::{VBlank as IVBlank, LCDSTAT as ILCDSTAT};
 use crate::memory::Memory;
@@ -571,6 +572,7 @@ pub enum PpuStatus {
     VBlank = 1,
 }
 pub struct PPU {
+    mode: GameBoyMode,
     cycles: u32,
     fifo: FIFO,
     mmu: Rc<RefCell<Mmu>>,
@@ -579,9 +581,10 @@ pub struct PPU {
     pub frame_buffer: [u32; WIDTH * HEIGHT],
 }
 impl PPU {
-    pub fn new(mmu: Rc<RefCell<Mmu>>) -> Self {
+    pub fn new(mode: GameBoyMode, mmu: Rc<RefCell<Mmu>>) -> Self {
         let fifo = FIFO::new(mmu.clone());
         let mut ppu = PPU {
+            mode,
             cycles: 0,
             mmu,
             fifo,
@@ -870,7 +873,54 @@ impl Memory for STAT {
     }
 }
 
+struct VRAM {
+    mode: GameBoyMode,
+    bank: u8,
+    memory: [u8; (0x9FFF - 0x8000 + 1) * 2],
+}
+impl VRAM {
+    fn new(mode: GameBoyMode) -> Self {
+        Self {
+            mode,
+            bank: 0xFF,
+            memory: [0; (0x9FFF - 0x8000 + 1) * 2],
+        }
+    }
+    fn get_bank_index(&self) -> u8 {
+        if self.mode == GameBoyMode::GBC {
+            self.bank & 1
+        } else {
+            0
+        }
+    }
+}
+impl Memory for VRAM {
+    fn get(&self, index: u16) -> u8 {
+        match index {
+            0xFF4F => self.bank,
+            0x8000..=0x9FFF => {
+                let bank_index = self.get_bank_index() as u16;
+                let index = index - 0x8000 + bank_index * (0x9FFF - 0x8000 + 1);
+                self.memory[index as usize]
+            }
+            _ => panic!("VRAM out of range"),
+        }
+    }
+    fn set(&mut self, index: u16, value: u8) {
+        match index {
+            0xFF4F => self.bank = value,
+            0x8000..=0x9FFF => {
+                let bank_index = self.get_bank_index() as u16;
+                let index = index - 0x8000 + bank_index * (0x9FFF - 0x8000 + 1);
+                self.memory[index as usize] = value;
+            }
+            _ => panic!("VRAM out of range"),
+        }
+    }
+}
+
 pub struct PpuMmu {
+    mode: GameBoyMode,
     interrupt: Rc<RefCell<Interrupt>>,
     pub lcdc: LCDC,
     pub stat: STAT,
@@ -883,16 +933,18 @@ pub struct PpuMmu {
     pub bgp: u8,
     pub op0: u8,
     pub op1: u8,
-    vram: [u8; 0x9FFF - 0x8000 + 1],
+    vram: VRAM,
     oam: [u8; 0xFE9F - 0xFE00 + 1],
 }
 impl PpuMmu {
-    pub fn new(interrupt: Rc<RefCell<Interrupt>>) -> Self {
+    pub fn new(mode: GameBoyMode, interrupt: Rc<RefCell<Interrupt>>) -> Self {
         let lcdc = LCDC::new();
         let ly = Rc::new(RefCell::new(0));
         let lyc = Rc::new(RefCell::new(0));
         let stat = STAT::new(ly.clone(), lyc.clone());
+        let vram = VRAM::new(mode);
         Self {
+            mode,
             interrupt,
             lcdc,
             stat,
@@ -905,7 +957,7 @@ impl PpuMmu {
             bgp: 0,
             op0: 0,
             op1: 0,
-            vram: [0; 0x9FFF - 0x8000 + 1],
+            vram,
             oam: [0; 0xFE9F - 0xFE00 + 1],
         }
     }
@@ -966,36 +1018,36 @@ impl PpuMmu {
 impl Memory for PpuMmu {
     fn get(&self, index: u16) -> u8 {
         match index {
-            0xff40 => self.lcdc.get(index),
-            0xff41 => self.stat.get(index),
-            0xff42 => self.scy,
-            0xff43 => self.scx,
-            0xff44 => self.get_ly(),
-            0xff45 => self.get_lyc(),
-            0xff47 => self.bgp,
-            0xff48 => self.op0,
-            0xff49 => self.op1,
-            0xff4A => self.wy,
-            0xff4B => self.wx,
-            0x8000..=0x9FFF => self.vram[(index - 0x8000) as usize],
+            0xFF40 => self.lcdc.get(index),
+            0xFF41 => self.stat.get(index),
+            0xFF42 => self.scy,
+            0xFF43 => self.scx,
+            0xFF44 => self.get_ly(),
+            0xFF45 => self.get_lyc(),
+            0xFF47 => self.bgp,
+            0xFF48 => self.op0,
+            0xFF49 => self.op1,
+            0xFF4A => self.wy,
+            0xFF4B => self.wx,
+            0xFF4F | 0x8000..=0x9FFF => self.vram.get(index),
             0xFE00..=0xFE9F => self.oam[(index - 0xFE00) as usize],
             _ => panic!("PpuMmu out of range"),
         }
     }
     fn set(&mut self, index: u16, value: u8) {
         match index {
-            0xff40 => self.lcdc.set(index, value),
-            0xff41 => self.stat.set(index, value),
-            0xff42 => self.scy = value,
-            0xff43 => self.scx = value,
-            0xff44 => {}
-            0xff45 => self.set_lyc(value),
-            0xff47 => self.bgp = value,
-            0xff48 => self.op0 = value,
-            0xff49 => self.op1 = value,
-            0xff4A => self.wy = value,
-            0xff4B => self.wx = value,
-            0x8000..=0x9FFF => self.vram[(index - 0x8000) as usize] = value,
+            0xFF40 => self.lcdc.set(index, value),
+            0xFF41 => self.stat.set(index, value),
+            0xFF42 => self.scy = value,
+            0xFF43 => self.scx = value,
+            0xFF44 => {}
+            0xFF45 => self.set_lyc(value),
+            0xFF47 => self.bgp = value,
+            0xFF48 => self.op0 = value,
+            0xFF49 => self.op1 = value,
+            0xFF4A => self.wy = value,
+            0xFF4B => self.wx = value,
+            0xFF4F | 0x8000..=0x9FFF => self.vram.set(index, value),
             0xFE00..=0xFE9F => self.oam[(index - 0xFE00) as usize] = value,
             _ => panic!("PpuMmu out of range"),
         }

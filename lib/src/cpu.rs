@@ -1,4 +1,6 @@
+use crate::gameboy_mode::GameBoyMode;
 use crate::memory::Memory;
+use crate::mmu::Mmu;
 use crate::util::{check_bit, u16_from_2u8, u8u8_from_u16};
 // use log::info;
 use std::{cell::RefCell, rc::Rc};
@@ -123,19 +125,21 @@ impl Registers {
 }
 
 pub struct Cpu {
+    mode: GameBoyMode,
     cycles: u32,
     cur_opcode_cycles: u32,
     ime: bool, // true:enable; false:disable
     ime_next: Option<bool>,
     is_halted: bool,
     reg: Registers,
-    mmu: Rc<RefCell<dyn Memory>>,
+    mmu: Rc<RefCell<Mmu>>,
 }
 
 impl Cpu {
-    pub fn new(mmu: Rc<RefCell<dyn Memory>>) -> Self {
+    pub fn new(mode: GameBoyMode, mmu: Rc<RefCell<Mmu>>, skip_bios: bool) -> Self {
         let reg = Registers::new();
-        Cpu {
+        let mut cpu = Cpu {
+            mode,
             reg,
             mmu: mmu,
             cycles: 0,
@@ -143,7 +147,11 @@ impl Cpu {
             ime: false,
             ime_next: None,
             is_halted: false,
+        };
+        if skip_bios {
+            cpu.skip_bios();
         }
+        cpu
     }
     pub fn skip_bios(&mut self) {
         self.reg.pc = 0x0100;
@@ -224,6 +232,12 @@ impl Cpu {
         cycles
     }
     pub fn trick(&mut self) {
+        self.trick_cpu();
+        if self.mode == GameBoyMode::GBC && self.mmu.borrow().speed.current_speed {
+            self.trick_cpu();
+        }
+    }
+    pub fn trick_cpu(&mut self) {
         if self.cycles == 0 {
             self.cur_opcode_cycles = self.step();
         }
@@ -1330,6 +1344,7 @@ impl Cpu {
             // STOP 0
             0x10 => {
                 let _ = self.imm();
+                self.mmu.borrow_mut().speed.switch();
                 // TODO
                 // Halt CPU & LCD display until button pressed
             }
@@ -1671,14 +1686,16 @@ pub enum TimerClock {
     S3 = 256,
 }
 pub struct Timer {
+    mode: GameBoyMode,
     div_cycles: usize,
     tima_cycles: usize,
-    mmu: Rc<RefCell<dyn Memory>>,
+    mmu: Rc<RefCell<Mmu>>,
     cur_tac: TimerClock,
 }
 impl Timer {
-    pub fn new(mmu: Rc<RefCell<dyn Memory>>) -> Self {
+    pub fn new(mode: GameBoyMode, mmu: Rc<RefCell<Mmu>>) -> Self {
         Self {
+            mode,
             div_cycles: 0,
             tima_cycles: 0,
             mmu,
@@ -1688,6 +1705,10 @@ impl Timer {
     pub fn trick(&mut self) {
         self.trick_div();
         self.trick_tima();
+        if self.mode == GameBoyMode::GBC && self.mmu.borrow().speed.current_speed {
+            self.trick_div();
+            self.trick_tima();
+        }
     }
     fn trick_div(&mut self) {
         let time_clock = TimerClock::S3 as usize;

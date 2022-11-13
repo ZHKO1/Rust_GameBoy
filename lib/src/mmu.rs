@@ -1,4 +1,5 @@
-use crate::cartridge::{open, Cartridge, Stable};
+use crate::cartridge::{from_vecu8, Cartridge, Stable};
+use crate::gameboy_mode::GameBoyMode;
 use crate::interrupt::Interrupt;
 use crate::joypad::JoyPad;
 use crate::memory::Memory;
@@ -39,19 +40,158 @@ impl Memory for MemoryBlock {
     }
 }
 
+struct HDMA {
+    source_high: u8,
+    source_low: u8,
+    destination_high: u8,
+    destination_low: u8,
+    memory: [u8; 0xFF55 - 0xFF51 + 1],
+}
+impl HDMA {
+    fn new() -> Self {
+        Self {
+            source_high: 0xFF,
+            source_low: 0xFF,
+            destination_high: 0xFF,
+            destination_low: 0xFF,
+            memory: [0; 0xFF55 - 0xFF51 + 1],
+        }
+    }
+    fn get_source_destination_length(&self) -> (u16, u16, u16) {
+        let source = u16::from_be_bytes([self.source_high, self.source_low]) & 0xFFF0;
+        let destination =
+            (u16::from_be_bytes([self.destination_high, self.destination_low]) | 0x8000) & 0xFFF0;
+        let length = ((self.memory[0xFF55 - 0xFF51] & 0x7F) as u16 + 1) << 4;
+        (source, destination, length)
+    }
+}
+impl Memory for HDMA {
+    fn get(&self, index: u16) -> u8 {
+        if index >= 0xFF51 && index <= 0xFF55 {
+            self.memory[index as usize - 0xFF51]
+        } else {
+            panic!("HDMA get index not in 0xFF51~0xFF55")
+        }
+    }
+    fn set(&mut self, index: u16, value: u8) {
+        match index {
+            0xFF51 => {
+                self.source_high = value;
+            }
+            0xFF52 => {
+                self.source_low = value;
+            }
+            0xFF53 => {
+                self.destination_high = value;
+            }
+            0xFF54 => {
+                self.destination_low = value;
+            }
+            0xFF55 => {
+                self.memory[index as usize - 0xFF51] = value;
+            }
+            _ => {}
+        }
+    }
+}
+
+struct WRAM {
+    bank: u8,
+    memory: [u8; (0xDFFF - 0xD000 + 1) * 8],
+}
+impl WRAM {
+    fn new() -> Self {
+        Self {
+            bank: 1,
+            memory: [0; (0xDFFF - 0xD000 + 1) * 8],
+        }
+    }
+}
+impl Memory for WRAM {
+    fn get(&self, index: u16) -> u8 {
+        match index {
+            0xFF70 => self.bank | 0xF8,
+            0xC000..=0xCFFF => self.memory[index as usize - 0xC000],
+            0xD000..=0xDFFF => {
+                let bank = if self.bank == 0 { 1 } else { self.bank } as usize;
+                let memory_index = (index as usize - 0xD000) + (0xDFFF - 0xD000 + 1) * bank;
+                self.memory[memory_index]
+            }
+            _ => {
+                panic!("Out Range of WRAM")
+            }
+        }
+    }
+    fn set(&mut self, index: u16, value: u8) {
+        match index {
+            0xFF70 => {
+                self.bank = value & 0x07;
+            }
+            0xC000..=0xCFFF => {
+                self.memory[index as usize - 0xC000] = value;
+            }
+            0xD000..=0xDFFF => {
+                let bank = if self.bank == 0 { 1 } else { self.bank } as usize;
+                let memory_index = (index as usize - 0xD000) + (0xDFFF - 0xD000 + 1) * bank;
+                self.memory[memory_index] = value;
+            }
+            _ => {
+                panic!("Out Range of WRAM")
+            }
+        }
+    }
+}
+
+pub struct Speed {
+    pub current_speed: bool,
+    prepare_switch: bool,
+    memory: u8,
+}
+impl Speed {
+    fn new() -> Self {
+        Self {
+            current_speed: false,
+            prepare_switch: false,
+            memory: 0xFF,
+        }
+    }
+    pub fn switch(&mut self) {
+        if self.prepare_switch {
+            self.current_speed = !self.current_speed;
+            self.prepare_switch = false;
+        }
+    }
+}
+impl Memory for Speed {
+    fn get(&self, index: u16) -> u8 {
+        assert_eq!(index, 0xFF4D);
+        let current_speed = if self.current_speed { 1 } else { 0 } << 7;
+        let prepare_switch = if self.prepare_switch { 0x01 } else { 0x00 };
+        (self.memory & 0x7E) | current_speed | prepare_switch
+    }
+    fn set(&mut self, index: u16, value: u8) {
+        assert_eq!(index, 0xFF4D);
+        self.memory = value;
+        self.prepare_switch = (self.memory & 0x01) == 0x01;
+    }
+}
+
 pub struct Mmu {
+    mode: GameBoyMode,
     boot: [u8; 0x100],
-    cartridge: Box<dyn Cartridge>,
-    other: MemoryBlock,
+    pub cartridge: Box<dyn Cartridge>,
     pub joypad: JoyPad,
     pub ppu: PpuMmu,
     interrupt: Rc<RefCell<Interrupt>>,
+    wram: WRAM,
+    other: MemoryBlock,
+    hdma: HDMA,
+    pub speed: Speed,
     pub log_msg: Vec<u8>,
 }
 
 impl Mmu {
-    pub fn new(bios: Vec<u8>, rom: Vec<u8>) -> Self {
-        let cartridge = open(rom);
+    pub fn new(mode: GameBoyMode, bios: Vec<u8>, cartridge: Box<dyn Cartridge>) -> Self {
         let other = MemoryBlock::new();
         let mut boot = [0; 0x100];
         let skip_boot = bios.is_empty();
@@ -61,14 +201,21 @@ impl Mmu {
         let interrupt = Interrupt::new();
         let rc_refcell_interrupt = Rc::new(RefCell::new(interrupt));
         let joypad = JoyPad::new(rc_refcell_interrupt.clone());
-        let ppu = PpuMmu::new(rc_refcell_interrupt.clone());
+        let ppu = PpuMmu::new(mode, rc_refcell_interrupt.clone());
+        let hdma = HDMA::new();
+        let speed = Speed::new();
+        let wram = WRAM::new();
         let mut mmu = Self {
+            mode,
             boot,
             cartridge,
             other,
             joypad,
             ppu,
+            wram,
             interrupt: rc_refcell_interrupt,
+            hdma,
+            speed,
             log_msg: vec![],
         };
         if skip_boot {
@@ -92,6 +239,19 @@ impl Mmu {
             self.set(destination, source_v);
         }
     }
+    fn hdma(&mut self) {
+        let (source, destination, length) = self.hdma.get_source_destination_length();
+        if source > destination {
+            return;
+        }
+        for index in 0x0000..=length {
+            let s = source + index;
+            let d = destination + index;
+            let s_v = self.get(s);
+            self.set(d, s_v);
+        }
+        self.set(0xFF55, 0xFF);
+    }
     pub fn bind_event(&mut self, index: u16, value: u8) {
         match index {
             0xFF02 => {
@@ -103,6 +263,11 @@ impl Mmu {
             0xFF46 => {
                 self.dma(value);
             }
+            0xFF55 => {
+                if self.mode == GameBoyMode::GBC {
+                    self.hdma();
+                }
+            }
             _ => {}
         };
     }
@@ -110,7 +275,7 @@ impl Mmu {
 impl Memory for Mmu {
     fn get(&self, index: u16) -> u8 {
         match index {
-            0x0000..=0x00ff => {
+            0x0000..=0x00FF => {
                 if self.is_boot() {
                     self.boot[index as usize]
                 } else {
@@ -123,7 +288,35 @@ impl Memory for Mmu {
             0xFE00..=0xFE9F => self.ppu.get(index),
             0xFF00 => self.joypad.get(index),
             0xFF0F => self.interrupt.borrow().get(index),
-            0xFF40..=0xff45 | 0xFF47..=0xFF4B => self.ppu.get(index),
+            0xFF40..=0xFF45 | 0xFF47..=0xFF4B | 0xFF4F => self.ppu.get(index),
+            0xFF4D => {
+                if self.mode == GameBoyMode::GBC {
+                    self.speed.get(index)
+                } else {
+                    self.other.get(index)
+                }
+            }
+            0xFF51..=0xFF55 => {
+                if self.mode == GameBoyMode::GBC {
+                    self.hdma.get(index)
+                } else {
+                    self.other.get(index)
+                }
+            }
+            0xFF70 | 0xC000..=0xDFFF => {
+                if self.mode == GameBoyMode::GBC {
+                    self.wram.get(index)
+                } else {
+                    self.other.get(index)
+                }
+            }
+            0xFF74 => {
+                if self.mode == GameBoyMode::GBC {
+                    self.other.get(index)
+                } else {
+                    0xFF
+                }
+            }
             _ => self.other.get(index),
         }
     }
@@ -136,7 +329,34 @@ impl Memory for Mmu {
             0xFE00..=0xFE9F => self.ppu.set(index, value),
             0xFF00 => self.joypad.set(index, value),
             0xFF0F => self.interrupt.borrow_mut().set(index, value),
-            0xFF40..=0xff45 | 0xFF47..=0xFF4B => self.ppu.set(index, value),
+            0xFF40..=0xFF45 | 0xFF47..=0xFF4B | 0xFF4F => self.ppu.set(index, value),
+            0xFF4D => {
+                if self.mode == GameBoyMode::GBC {
+                    self.speed.set(index, value)
+                } else {
+                    self.other.set(index, value)
+                }
+            }
+            0xFF51..=0xFF55 => {
+                if self.mode == GameBoyMode::GBC {
+                    self.hdma.set(index, value)
+                } else {
+                    self.other.set(index, value)
+                }
+            }
+            0xFF70 | 0xC000..=0xDFFF => {
+                if self.mode == GameBoyMode::GBC {
+                    self.wram.set(index, value)
+                } else {
+                    self.other.set(index, value)
+                }
+            }
+            0xFF74 => {
+                if self.mode == GameBoyMode::GBC {
+                    self.other.set(index, value)
+                } else {
+                }
+            }
             _ => self.other.set(index, value),
         }
     }

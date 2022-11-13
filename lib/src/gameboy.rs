@@ -1,5 +1,6 @@
-use crate::cartridge::Stable;
+use crate::cartridge::{from_vecu8, Stable};
 use crate::cpu::{Cpu, Timer};
+use crate::gameboy_mode::GameBoyMode;
 use crate::joypad::JoyPadKey;
 use crate::mmu::Mmu;
 use crate::ppu::PPU;
@@ -77,15 +78,15 @@ impl GameBoy {
         ])
         .unwrap();
         */
-        let skip_boot = bios.is_empty();
-        let mmu = Mmu::new(bios, rom);
+        let skip_bios = bios.is_empty();
+        let cartridge = from_vecu8(rom);
+        let gbc_flag = cartridge.gbc_flag();
+        let mode = if gbc_flag { GameBoyMode::GBC } else { GameBoyMode::GB };
+        let mmu = Mmu::new(mode, bios, cartridge);
         let rc_refcell_mmu = Rc::new(RefCell::new(mmu));
-        let mut cpu = Cpu::new(rc_refcell_mmu.clone());
-        if skip_boot {
-            cpu.skip_bios();
-        }
-        let ppu = PPU::new(rc_refcell_mmu.clone());
-        let timer = Timer::new(rc_refcell_mmu.clone());
+        let cpu = Cpu::new(mode, rc_refcell_mmu.clone(), skip_bios);
+        let ppu = PPU::new(mode, rc_refcell_mmu.clone());
+        let timer = Timer::new(mode, rc_refcell_mmu.clone());
         Self {
             mmu: rc_refcell_mmu.clone(),
             cpu,
@@ -98,7 +99,7 @@ impl GameBoy {
         self.cpu.trick();
         self.timer.trick();
         let is_refresh = self.ppu.trick();
-        for event in self.inputs.0.iter() {
+        for event in &self.inputs.0 {
             self.mmu
                 .borrow_mut()
                 .joypad
@@ -111,6 +112,9 @@ impl GameBoy {
     }
     pub fn input(&mut self, key: JoyPadKey, is_pressed: bool) {
         self.inputs.input(key, is_pressed)
+    }
+    pub fn is_cartridge_gbc(&self) -> bool {
+        self.mmu.borrow().cartridge.gbc_flag()
     }
 }
 

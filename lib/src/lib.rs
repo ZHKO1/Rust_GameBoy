@@ -7,4 +7,5 @@ pub mod interrupt;
 pub mod joypad;
 pub mod gameboy;
 pub mod util;
+pub mod gameboy_mode;
 mod test;

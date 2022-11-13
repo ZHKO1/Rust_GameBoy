@@ -2,7 +2,7 @@ use crate::memory::Memory;
 use chrono::Utc;
 use MBC1Mode::{Ram, Rom};
 
-pub fn open(rom: Vec<u8>) -> Box<dyn Cartridge> {
+pub fn from_vecu8(rom: Vec<u8>) -> Box<dyn Cartridge> {
     if rom.len() < 0x150 {
         panic!("rom.len()={} < 0x150", rom.len());
     }
@@ -75,6 +75,12 @@ pub trait Cartridge: Stable + Memory {
             }
         }
         result
+    }
+    fn gbc_flag(&self) -> bool {
+        match self.get(0x0143) {
+            0x80 | 0xC0 => true,
+            _ => false,
+        }
     }
 }
 impl Cartridge for RomOnly {}
