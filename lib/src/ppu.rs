@@ -362,11 +362,16 @@ impl Fetcher for FetcherSprite {
         }
     }
     fn get_tile(&mut self) -> u16 {
-        0x8000 + (self.oam.tile_index as u16) * 16
+        if self.mmu.borrow().ppu.lcdc.obj_size {
+            0x8000 + (self.oam.tile_index as u16 & 0xFE) * 16
+        } else {
+            0x8000 + (self.oam.tile_index as u16) * 16
+        }
     }
     fn get_tile_data_low(&self) -> u8 {
         let tile_index = self.tile_index;
-        let height = if self.oam.obj_size { 16 } else { 8 };
+        let obj_size = self.mmu.borrow().ppu.lcdc.obj_size;
+        let height = if obj_size { 16 } else { 8 };
         let mut tile_pixel_y = (self.scan_y as u16 + 16 - self.oam.y as u16) % height;
         if self.oam.y_flip {
             tile_pixel_y = (height - 1) - tile_pixel_y;
@@ -376,7 +381,8 @@ impl Fetcher for FetcherSprite {
     }
     fn get_tile_data_high(&self) -> u8 {
         let tile_index = self.tile_index;
-        let height = if self.oam.obj_size { 16 } else { 8 };
+        let obj_size = self.mmu.borrow().ppu.lcdc.obj_size;
+        let height = if obj_size { 16 } else { 8 };
         let mut tile_pixel_y = (self.scan_y as u16 + 16 - self.oam.y as u16) % height;
         if self.oam.y_flip {
             tile_pixel_y = (height - 1) - tile_pixel_y;
@@ -440,10 +446,9 @@ struct OAM {
     y_flip: bool,
     palette: bool,
     priority: usize,
-    obj_size: bool,
 }
 impl OAM {
-    fn new(y: u8, x: u8, tile_index: u8, flags: u8, priority: usize, obj_size: bool) -> Self {
+    fn new(y: u8, x: u8, tile_index: u8, flags: u8, priority: usize) -> Self {
         Self {
             y,
             x,
@@ -453,11 +458,10 @@ impl OAM {
             y_flip: check_bit(flags, 6),
             palette: check_bit(flags, 4),
             priority,
-            obj_size,
         }
     }
-    fn is_scaned(&self, ly: u8) -> bool {
-        let height = if self.obj_size { 16 } else { 8 };
+    fn is_scaned(&self, ly: u8, obj_size: bool) -> bool {
+        let height = if obj_size { 16 } else { 8 };
         let y_start = self.y as i32 - 16;
         let y_end = self.y as i32 + height - 16;
         ((ly as i32) >= y_start) && ((ly as i32) < y_end) && (self.x != 0)
@@ -475,7 +479,6 @@ impl Default for OAM {
             y_flip: false,
             palette: false,
             priority: 40,
-            obj_size: false,
         }
     }
 }
@@ -848,16 +851,16 @@ impl PPU {
     }
     fn oam_scan(&self) -> Vec<OAM> {
         let ly = self.get_ly();
-        let obj_size = self.mmu.borrow().ppu.lcdc.obj_size;
         let mut result = Vec::with_capacity(10);
+        let obj_size = self.mmu.borrow().ppu.lcdc.obj_size;
         for index in 00..40 {
             let oam_address = 0xFE00 + (index as u16) * 4;
             let y = self.mmu.borrow().get(oam_address);
             let x = self.mmu.borrow().get(oam_address + 1);
             let tile_index = self.mmu.borrow().get(oam_address + 2);
             let flags = self.mmu.borrow().get(oam_address + 3);
-            let oam = OAM::new(y, x, tile_index, flags, index, obj_size);
-            if oam.is_scaned(ly) {
+            let oam = OAM::new(y, x, tile_index, flags, index);
+            if oam.is_scaned(ly, obj_size) {
                 result.push(oam);
             }
             if result.len() == 10 {
