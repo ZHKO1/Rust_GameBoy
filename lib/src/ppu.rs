@@ -192,6 +192,7 @@ struct FetcherWindow {
     scan_y: u8,
     wx: u8,
     wy: u8,
+    window_internal_line_index: u8,
     cycles: u16,
     mmu: Rc<RefCell<Mmu>>,
     status: FetcherStatus,
@@ -200,6 +201,11 @@ struct FetcherWindow {
     tile_data_high: u8,
     buffer: Vec<Pixel>,
 }
+impl FetcherWindow {
+    fn set_window_internal_line_index(&mut self, window_internal_line_index: u8) {
+        self.window_internal_line_index = window_internal_line_index;
+    }
+}
 impl Fetcher for FetcherWindow {
     fn new(mmu: Rc<RefCell<Mmu>>, scan_x: u8, scan_y: u8) -> Self {
         Self {
@@ -207,6 +213,7 @@ impl Fetcher for FetcherWindow {
             scan_y,
             wx: 0,
             wy: 0,
+            window_internal_line_index: 0,
             mmu,
             cycles: 0,
             status: GetTile,
@@ -249,7 +256,7 @@ impl Fetcher for FetcherWindow {
         self.wy = self.mmu.borrow().ppu.wy;
         self.wx = self.mmu.borrow().ppu.wx;
         let bg_map_x = (self.scan_x as u16 + 7 - self.wx as u16) % 256 / 8;
-        let bg_map_y = (self.scan_y as u16 - self.wy as u16) % 256 / 8;
+        let bg_map_y = self.window_internal_line_index as u16 / 8;
         let bg_map_index = bg_map_x + bg_map_y * 32;
         let bg_map_byte = self.mmu.borrow().get(window_map_start + bg_map_index);
         let tile_index: u16 = if bg_window_tile_data_area {
@@ -261,13 +268,13 @@ impl Fetcher for FetcherWindow {
     }
     fn get_tile_data_low(&self) -> u8 {
         let tile_index = self.tile_index;
-        let tile_pixel_y = (self.scan_y as u16 - self.wy as u16) % 8;
+        let tile_pixel_y = self.window_internal_line_index as u16 % 8;
         let tile_byte_low = self.mmu.borrow().get(tile_index + tile_pixel_y * 2);
         tile_byte_low
     }
     fn get_tile_data_high(&self) -> u8 {
         let tile_index = self.tile_index;
-        let tile_pixel_y = (self.scan_y as u16 - self.wy as u16) % 8;
+        let tile_pixel_y = self.window_internal_line_index as u16 % 8;
         let tile_byte_high = self.mmu.borrow().get(tile_index + tile_pixel_y * 2 + 1);
         tile_byte_high
     }
@@ -490,6 +497,7 @@ enum FifoTrick {
 struct FIFO {
     x: u8,
     y: u8,
+    window_internal_line_counters: u8,
     status: FifoTrick,
     mmu: Rc<RefCell<Mmu>>,
     fetcher: Box<dyn Fetcher>,
@@ -502,9 +510,10 @@ impl FIFO {
         let x = 0;
         let y = 0;
         let fetcher = Box::new(FetcherBg::new(mmu.clone(), x, y));
-        FIFO {
+        Self {
             x,
             y,
+            window_internal_line_counters: 0,
             mmu,
             status: FifoTrick::BgWindow,
             fetcher,
@@ -516,6 +525,12 @@ impl FIFO {
     fn init(&mut self, y: u8) {
         self.x = 0;
         self.y = y;
+        if y == 0 {
+            self.window_internal_line_counters = 0;
+        }
+        if self.check_window(160) {
+            self.window_internal_line_counters = self.window_internal_line_counters + 1;
+        }
         self.sprite_queue.clear();
         self.queue.clear();
         self.oam.clear();
@@ -678,7 +693,11 @@ impl FIFO {
         let mmu = self.mmu.clone();
         match ptype {
             BG => Box::new(FetcherBg::new(mmu, x, y)),
-            Window => Box::new(FetcherWindow::new(mmu, x, y)),
+            Window => {
+                let mut fetcher = FetcherWindow::new(mmu, x, y);
+                fetcher.set_window_internal_line_index(self.window_internal_line_counters - 1);
+                Box::new(fetcher)
+            }
             _ => panic!(""),
         }
     }
