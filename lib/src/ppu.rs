@@ -37,29 +37,43 @@ struct Pixel {
     oam_priority: usize,
 }
 
+impl Default for Pixel {
+    fn default() -> Self {
+        Self {
+            ptype: BG,
+            pcolor: 0,
+            pvalue: 0,
+            bg_window_over_obj: false,
+            oam_priority: 40,
+        }
+    }
+}
+
 enum FetcherStatus {
     GetTile,
     GetTileDataLow,
     GetTileDataHigh,
 }
 
-struct Fetcher {
+trait Fetcher {
+    fn new(mmu: Rc<RefCell<Mmu>>, scan_x: u8, scan_y: u8) -> Self
+    where
+        Self: Sized;
+    fn trick(&mut self);
+    fn get_tile(&mut self) -> u16;
+    fn get_tile_data_low(&self) -> u8;
+    fn get_tile_data_high(&self) -> u8;
+    fn get_buffer(&mut self) -> Vec<Pixel>;
+    fn get_color_index(&self, pvalue: u8) -> u8;
+    fn buffer(&self) -> &[Pixel];
+}
+
+struct FetcherBg {
     scan_x: u8,
     scan_y: u8,
     scx: u8,
     scy: u8,
-    wx: u8,
-    wy: u8,
     cycles: u16,
-    oam_x: u8,
-    oam_y: u8,
-    oam_priority: usize,
-    x_flip: bool,
-    y_flip: bool,
-    palette: bool,
-    obj_size: bool,
-    bg_window_over_obj: bool,
-    ptype: PixelType,
     mmu: Rc<RefCell<Mmu>>,
     status: FetcherStatus,
     tile_index: u16,
@@ -67,60 +81,21 @@ struct Fetcher {
     tile_data_high: u8,
     buffer: Vec<Pixel>,
 }
-impl Fetcher {
-    fn new(mmu: Rc<RefCell<Mmu>>) -> Self {
-        Fetcher {
-            scan_x: 0,
-            scan_y: 0,
+impl Fetcher for FetcherBg {
+    fn new(mmu: Rc<RefCell<Mmu>>, scan_x: u8, scan_y: u8) -> Self {
+        Self {
+            scan_x,
+            scan_y,
             scx: 0,
             scy: 0,
-            wx: 0,
-            wy: 0,
-            oam_x: 0,
-            oam_y: 0,
-            x_flip: false,
-            y_flip: false,
-            palette: false,
-            obj_size: false,
-            oam_priority: 40,
-            bg_window_over_obj: false,
-            ptype: BG,
             mmu,
             cycles: 0,
             status: GetTile,
             tile_index: 0,
             tile_data_low: 0,
             tile_data_high: 0,
-            buffer: Vec::new(),
+            buffer: Vec::with_capacity(8),
         }
-    }
-    fn init(&mut self, ptype: PixelType, x: u8, y: u8) {
-        self.scan_x = x;
-        self.scan_y = y;
-
-        self.scx = 0;
-        self.scy = 0;
-
-        self.wx = 0;
-        self.wy = 0;
-
-        self.oam_x = 0;
-        self.oam_y = 0;
-
-        self.x_flip = false;
-        self.y_flip = false;
-        self.palette = false;
-        self.bg_window_over_obj = false;
-        self.ptype = ptype;
-
-        self.cycles = 0;
-        self.status = GetTile;
-
-        self.tile_index = 0;
-        self.tile_data_low = 0;
-        self.tile_data_high = 0;
-
-        self.buffer = Vec::new();
     }
     fn trick(&mut self) {
         if self.cycles == 1 {
@@ -151,130 +126,293 @@ impl Fetcher {
             true => 0x9C00,
             false => 0x9800,
         };
+        self.scy = self.mmu.borrow().ppu.scy;
+        self.scx = self.mmu.borrow().ppu.scx;
+        let bg_map_x = (self.scan_x as u16 + self.scx as u16) % 256 / 8;
+        let bg_map_y = (self.scan_y as u16 + self.scy as u16) % 256 / 8;
+        let bg_map_index = bg_map_x + bg_map_y * 32;
+        let bg_map_byte = self.mmu.borrow().get(bg_map_start + bg_map_index);
+        let tile_index: u16 = if bg_window_tile_data_area {
+            0x8000 + bg_map_byte as u16 * 8 * 2
+        } else {
+            (0x9000 as i32 + (bg_map_byte as i8) as i32 * 8 * 2) as u16
+        };
+        tile_index
+    }
+    fn get_tile_data_low(&self) -> u8 {
+        let tile_index = self.tile_index;
+        let tile_pixel_y = (self.scan_y as u16 + self.scy as u16) % 8;
+        let tile_byte_low = self.mmu.borrow().get(tile_index + tile_pixel_y * 2);
+        tile_byte_low
+    }
+    fn get_tile_data_high(&self) -> u8 {
+        let tile_index = self.tile_index;
+        let tile_pixel_y = (self.scan_y as u16 + self.scy as u16) % 8;
+        let tile_byte_high = self.mmu.borrow().get(tile_index + tile_pixel_y * 2 + 1);
+        tile_byte_high
+    }
+    fn get_buffer(&mut self) -> Vec<Pixel> {
+        let mut result = Vec::new();
+        let get_pixel_bit: Box<dyn Fn(u8) -> u8> = Box::new(|index: u8| 8 - index - 1);
+        let buffer_index_start = (self.scan_x as u16 + self.scx as u16) % 8;
+        for buffer_index in buffer_index_start..8 {
+            let pixel_bit = get_pixel_bit(buffer_index as u8);
+            let pixel_low = check_bit(self.tile_data_low, pixel_bit as u8);
+            let pixel_high = check_bit(self.tile_data_high, pixel_bit as u8);
+            let pvalue = (pixel_low as u8) | ((pixel_high as u8) << 1);
+            let pcolor = self.get_color_index(pvalue);
+            result.push(Pixel {
+                ptype: BG,
+                pvalue,
+                pcolor,
+                ..Pixel::default()
+            });
+        }
+        result
+    }
+    fn get_color_index(&self, pvalue: u8) -> u8 {
+        let palette = self.mmu.borrow().ppu.bgp;
+        match pvalue {
+            0 => palette & 0b11,
+            1 => (palette & 0b1100) >> 2,
+            2 => (palette & 0b110000) >> 4,
+            3 => (palette & 0b11000000) >> 6,
+            _ => {
+                panic!("color index is out of range {}", pvalue);
+            }
+        }
+    }
+    fn buffer(&self) -> &[Pixel] {
+        &self.buffer
+    }
+}
+
+struct FetcherWindow {
+    scan_x: u8,
+    scan_y: u8,
+    wx: u8,
+    wy: u8,
+    cycles: u16,
+    mmu: Rc<RefCell<Mmu>>,
+    status: FetcherStatus,
+    tile_index: u16,
+    tile_data_low: u8,
+    tile_data_high: u8,
+    buffer: Vec<Pixel>,
+}
+impl Fetcher for FetcherWindow {
+    fn new(mmu: Rc<RefCell<Mmu>>, scan_x: u8, scan_y: u8) -> Self {
+        Self {
+            scan_x,
+            scan_y,
+            wx: 0,
+            wy: 0,
+            mmu,
+            cycles: 0,
+            status: GetTile,
+            tile_index: 0,
+            tile_data_low: 0,
+            tile_data_high: 0,
+            buffer: Vec::with_capacity(8),
+        }
+    }
+    fn trick(&mut self) {
+        if self.cycles == 1 {
+            self.cycles = 0;
+            return;
+        }
+        self.cycles += 1;
+        match self.status {
+            GetTile => {
+                self.tile_index = self.get_tile();
+                self.status = GetTileDataLow;
+            }
+            GetTileDataLow => {
+                self.tile_data_low = self.get_tile_data_low();
+                self.status = GetTileDataHigh;
+            }
+            GetTileDataHigh => {
+                self.tile_data_high = self.get_tile_data_high();
+                self.buffer = self.get_buffer();
+                self.status = GetTile;
+            }
+        }
+    }
+    fn get_tile(&mut self) -> u16 {
+        let bg_window_tile_data_area = self.mmu.borrow().ppu.lcdc.bg_window_tile_data_area;
         let window_tile_map_area = self.mmu.borrow().ppu.lcdc.window_tile_map_area;
         let window_map_start: u16 = match window_tile_map_area {
             true => 0x9C00,
             false => 0x9800,
         };
 
-        match self.ptype {
-            BG => {
-                self.scy = self.mmu.borrow().ppu.scy;
-                self.scx = self.mmu.borrow().ppu.scx;
-                let bg_map_x = (self.scan_x as u16 + self.scx as u16) % 256 / 8;
-                let bg_map_y = (self.scan_y as u16 + self.scy as u16) % 256 / 8;
-                let bg_map_index = bg_map_x + bg_map_y * 32;
-                let bg_map_byte = self.mmu.borrow().get(bg_map_start + bg_map_index);
-                let tile_index: u16 = if bg_window_tile_data_area {
-                    0x8000 + bg_map_byte as u16 * 8 * 2
-                } else {
-                    (0x9000 as i32 + (bg_map_byte as i8) as i32 * 8 * 2) as u16
-                };
-                tile_index
-            }
-            Window => {
-                self.wy = self.mmu.borrow().ppu.wy;
-                self.wx = self.mmu.borrow().ppu.wx;
-                let bg_map_x = (self.scan_x as u16 + 7 - self.wx as u16) % 256 / 8;
-                let bg_map_y = (self.scan_y as u16 - self.wy as u16) % 256 / 8;
-                let bg_map_index = bg_map_x + bg_map_y * 32;
-                let bg_map_byte = self.mmu.borrow().get(window_map_start + bg_map_index);
-                let tile_index: u16 = if bg_window_tile_data_area {
-                    0x8000 + bg_map_byte as u16 * 8 * 2
-                } else {
-                    (0x9000 as i32 + (bg_map_byte as i8) as i32 * 8 * 2) as u16
-                };
-                tile_index
-            }
-            Sprite => self.tile_index,
-        }
+        self.wy = self.mmu.borrow().ppu.wy;
+        self.wx = self.mmu.borrow().ppu.wx;
+        let bg_map_x = (self.scan_x as u16 + 7 - self.wx as u16) % 256 / 8;
+        let bg_map_y = (self.scan_y as u16 - self.wy as u16) % 256 / 8;
+        let bg_map_index = bg_map_x + bg_map_y * 32;
+        let bg_map_byte = self.mmu.borrow().get(window_map_start + bg_map_index);
+        let tile_index: u16 = if bg_window_tile_data_area {
+            0x8000 + bg_map_byte as u16 * 8 * 2
+        } else {
+            (0x9000 as i32 + (bg_map_byte as i8) as i32 * 8 * 2) as u16
+        };
+        tile_index
     }
     fn get_tile_data_low(&self) -> u8 {
         let tile_index = self.tile_index;
-        match self.ptype {
-            BG => {
-                let tile_pixel_y = (self.scan_y as u16 + self.scy as u16) % 8;
-                let tile_byte_low = self.mmu.borrow().get(tile_index + tile_pixel_y * 2);
-                tile_byte_low
-            }
-            Window => {
-                let tile_pixel_y = (self.scan_y as u16 - self.wy as u16) % 8;
-                let tile_byte_low = self.mmu.borrow().get(tile_index + tile_pixel_y * 2);
-                tile_byte_low
-            }
-            Sprite => {
-                let height = if self.obj_size { 16 } else { 8 };
-                let mut tile_pixel_y = (self.scan_y as u16 + 16 - self.oam_y as u16) % height;
-                if self.y_flip {
-                    tile_pixel_y = (height - 1) - tile_pixel_y;
-                }
-                let tile_byte_low = self.mmu.borrow().get(tile_index + tile_pixel_y * 2);
-                tile_byte_low
-            }
-        }
+        let tile_pixel_y = (self.scan_y as u16 - self.wy as u16) % 8;
+        let tile_byte_low = self.mmu.borrow().get(tile_index + tile_pixel_y * 2);
+        tile_byte_low
     }
     fn get_tile_data_high(&self) -> u8 {
         let tile_index = self.tile_index;
-        match self.ptype {
-            BG => {
-                let tile_pixel_y = (self.scan_y as u16 + self.scy as u16) % 8;
-                let tile_byte_high = self.mmu.borrow().get(tile_index + tile_pixel_y * 2 + 1);
-                tile_byte_high
-            }
-            Window => {
-                let tile_pixel_y = (self.scan_y as u16 - self.wy as u16) % 8;
-                let tile_byte_high = self.mmu.borrow().get(tile_index + tile_pixel_y * 2 + 1);
-                tile_byte_high
-            }
-            Sprite => {
-                let height = if self.obj_size { 16 } else { 8 };
-                let mut tile_pixel_y = (self.scan_y as u16 + 16 - self.oam_y as u16) % height;
-                if self.y_flip {
-                    tile_pixel_y = (height - 1) - tile_pixel_y;
-                }
-                let tile_byte_high = self.mmu.borrow().get(tile_index + tile_pixel_y * 2 + 1);
-                tile_byte_high
-            }
-        }
+        let tile_pixel_y = (self.scan_y as u16 - self.wy as u16) % 8;
+        let tile_byte_high = self.mmu.borrow().get(tile_index + tile_pixel_y * 2 + 1);
+        tile_byte_high
     }
     fn get_buffer(&mut self) -> Vec<Pixel> {
         let mut result = Vec::new();
-        let mut get_pixel_bit: Box<dyn Fn(u8) -> u8> = Box::new(|index: u8| 8 - index - 1);
-        let buffer_index_start = match self.ptype {
-            BG => (self.scan_x as u16 + self.scx as u16) % 8,
-            Window => (self.scan_x as u16 + 7 - self.wx as u16) % 8,
-            Sprite => {
-                if self.x_flip {
-                    get_pixel_bit = Box::new(|index: u8| index);
-                }
-                (self.scan_x as u16 + 8 - self.oam_x as u16) % 8
-            }
-        };
+        let get_pixel_bit: Box<dyn Fn(u8) -> u8> = Box::new(|index: u8| 8 - index - 1);
+        let buffer_index_start = (self.scan_x as u16 + 7 - self.wx as u16) % 8;
         for buffer_index in buffer_index_start..8 {
             let pixel_bit = get_pixel_bit(buffer_index as u8);
             let pixel_low = check_bit(self.tile_data_low, pixel_bit as u8);
             let pixel_high = check_bit(self.tile_data_high, pixel_bit as u8);
             let pvalue = (pixel_low as u8) | ((pixel_high as u8) << 1);
-            let pcolor = self.get_color_index(self.ptype, pvalue, self.palette);
+            let pcolor = self.get_color_index(pvalue);
             result.push(Pixel {
-                ptype: self.ptype,
+                ptype: Window,
                 pvalue,
                 pcolor,
-                bg_window_over_obj: self.bg_window_over_obj,
-                oam_priority: self.oam_priority,
+                ..Pixel::default()
             });
         }
         result
     }
-    fn get_color_index(&self, ptype: PixelType, pvalue: u8, is_obp1: bool) -> u8 {
-        let palette = match ptype {
-            BG | Window => self.mmu.borrow().ppu.bgp,
-            Sprite => {
-                if is_obp1 {
-                    self.mmu.borrow().ppu.op1
-                } else {
-                    self.mmu.borrow().ppu.op0
-                }
+    fn get_color_index(&self, pvalue: u8) -> u8 {
+        let palette = self.mmu.borrow().ppu.bgp;
+        match pvalue {
+            0 => palette & 0b11,
+            1 => (palette & 0b1100) >> 2,
+            2 => (palette & 0b110000) >> 4,
+            3 => (palette & 0b11000000) >> 6,
+            _ => {
+                panic!("color index is out of range {}", pvalue);
+            }
+        }
+    }
+    fn buffer(&self) -> &[Pixel] {
+        &self.buffer
+    }
+}
+
+struct FetcherSprite {
+    scan_x: u8,
+    scan_y: u8,
+    oam: OAM,
+    cycles: u16,
+    mmu: Rc<RefCell<Mmu>>,
+    status: FetcherStatus,
+    tile_index: u16,
+    tile_data_low: u8,
+    tile_data_high: u8,
+    buffer: Vec<Pixel>,
+}
+impl FetcherSprite {
+    fn set_oam(&mut self, oam: OAM) {
+        self.oam = oam;
+    }
+}
+impl Fetcher for FetcherSprite {
+    fn new(mmu: Rc<RefCell<Mmu>>, scan_x: u8, scan_y: u8) -> Self {
+        Self {
+            scan_x,
+            scan_y,
+            oam: OAM::default(),
+            mmu,
+            cycles: 0,
+            status: GetTile,
+            tile_index: 0,
+            tile_data_low: 0,
+            tile_data_high: 0,
+            buffer: Vec::with_capacity(8),
+        }
+    }
+    fn trick(&mut self) {
+        if self.cycles == 1 {
+            self.cycles = 0;
+            return;
+        }
+        self.cycles += 1;
+        match self.status {
+            GetTile => {
+                self.tile_index = self.get_tile();
+                self.status = GetTileDataLow;
+            }
+            GetTileDataLow => {
+                self.tile_data_low = self.get_tile_data_low();
+                self.status = GetTileDataHigh;
+            }
+            GetTileDataHigh => {
+                self.tile_data_high = self.get_tile_data_high();
+                self.buffer = self.get_buffer();
+                self.status = GetTile;
+            }
+        }
+    }
+    fn get_tile(&mut self) -> u16 {
+        0x8000 + (self.oam.tile_index as u16) * 16
+    }
+    fn get_tile_data_low(&self) -> u8 {
+        let tile_index = self.tile_index;
+        let height = if self.oam.obj_size { 16 } else { 8 };
+        let mut tile_pixel_y = (self.scan_y as u16 + 16 - self.oam.y as u16) % height;
+        if self.oam.y_flip {
+            tile_pixel_y = (height - 1) - tile_pixel_y;
+        }
+        let tile_byte_low = self.mmu.borrow().get(tile_index + tile_pixel_y * 2);
+        tile_byte_low
+    }
+    fn get_tile_data_high(&self) -> u8 {
+        let tile_index = self.tile_index;
+        let height = if self.oam.obj_size { 16 } else { 8 };
+        let mut tile_pixel_y = (self.scan_y as u16 + 16 - self.oam.y as u16) % height;
+        if self.oam.y_flip {
+            tile_pixel_y = (height - 1) - tile_pixel_y;
+        }
+        let tile_byte_high = self.mmu.borrow().get(tile_index + tile_pixel_y * 2 + 1);
+        tile_byte_high
+    }
+    fn get_buffer(&mut self) -> Vec<Pixel> {
+        let mut result = Vec::new();
+        let mut get_pixel_bit: Box<dyn Fn(u8) -> u8> = Box::new(|index: u8| 8 - index - 1);
+        if self.oam.x_flip {
+            get_pixel_bit = Box::new(|index: u8| index);
+        }
+        let buffer_index_start = (self.scan_x as u16 + 8 - self.oam.x as u16) % 8;
+        for buffer_index in buffer_index_start..8 {
+            let pixel_bit = get_pixel_bit(buffer_index as u8);
+            let pixel_low = check_bit(self.tile_data_low, pixel_bit as u8);
+            let pixel_high = check_bit(self.tile_data_high, pixel_bit as u8);
+            let pvalue = (pixel_low as u8) | ((pixel_high as u8) << 1);
+            let pcolor = self.get_color_index(pvalue);
+            result.push(Pixel {
+                ptype: Sprite,
+                pvalue,
+                pcolor,
+                bg_window_over_obj: self.oam.bg_window_over_obj,
+                oam_priority: self.oam.priority,
+            });
+        }
+        result
+    }
+    fn get_color_index(&self, pvalue: u8) -> u8 {
+        let palette = {
+            if self.oam.palette {
+                self.mmu.borrow().ppu.op1
+            } else {
+                self.mmu.borrow().ppu.op0
             }
         };
         match pvalue {
@@ -286,6 +424,9 @@ impl Fetcher {
                 panic!("color index is out of range {}", pvalue);
             }
         }
+    }
+    fn buffer(&self) -> &[Pixel] {
+        &self.buffer
     }
 }
 
@@ -323,6 +464,22 @@ impl OAM {
     }
 }
 
+impl Default for OAM {
+    fn default() -> Self {
+        Self {
+            y: 0,
+            x: 0,
+            tile_index: 0,
+            bg_window_over_obj: false,
+            x_flip: false,
+            y_flip: false,
+            palette: false,
+            priority: 40,
+            obj_size: false,
+        }
+    }
+}
+
 enum FifoTrick {
     BgWindow,
     Sprite,
@@ -332,17 +489,19 @@ struct FIFO {
     y: u8,
     status: FifoTrick,
     mmu: Rc<RefCell<Mmu>>,
-    fetcher: Fetcher,
+    fetcher: Box<dyn Fetcher>,
     sprite_queue: VecDeque<Pixel>,
     queue: VecDeque<Pixel>,
     oam: Vec<OAM>,
 }
 impl FIFO {
     fn new(mmu: Rc<RefCell<Mmu>>) -> Self {
-        let fetcher = Fetcher::new(mmu.clone());
+        let x = 0;
+        let y = 0;
+        let fetcher = Box::new(FetcherBg::new(mmu.clone(), x, y));
         FIFO {
-            x: 0,
-            y: 0,
+            x,
+            y,
             mmu,
             status: FifoTrick::BgWindow,
             fetcher,
@@ -358,7 +517,7 @@ impl FIFO {
         self.queue.clear();
         self.oam.clear();
         self.status = FifoTrick::BgWindow;
-        self.fetcher.init(self.get_fetcher_ptype(self.x), self.x, y);
+        self.fetcher = self.get_fetcher_window_or_bg(self.check_window_or_bg(self.x), self.x, y);
     }
     fn set_oam(&mut self, oam: Vec<OAM>) {
         self.oam = oam;
@@ -375,22 +534,17 @@ impl FIFO {
                         match event {
                             Window => {
                                 self.queue.clear();
-                                self.fetcher.init(Window, self.x, self.y);
+                                self.fetcher =
+                                    self.get_fetcher_window_or_bg(Window, self.x, self.y);
                                 return None;
                             }
                             Sprite => {
                                 self.status = FifoTrick::Sprite;
-                                self.fetcher.init(Sprite, self.x, self.y);
                                 let oam = self.oam_pop(self.x).unwrap();
-                                self.fetcher.oam_x = oam.x;
-                                self.fetcher.oam_y = oam.y;
-                                self.fetcher.oam_priority = oam.priority;
-                                self.fetcher.x_flip = oam.x_flip;
-                                self.fetcher.y_flip = oam.y_flip;
-                                self.fetcher.bg_window_over_obj = oam.bg_window_over_obj;
-                                self.fetcher.palette = oam.palette;
-                                self.fetcher.obj_size = oam.obj_size;
-                                self.fetcher.tile_index = 0x8000 + (oam.tile_index as u16) * 16;
+                                let mut fetcher =
+                                    Box::new(FetcherSprite::new(self.mmu.clone(), self.x, self.y));
+                                fetcher.set_oam(oam);
+                                self.fetcher = fetcher;
                                 return None;
                             }
                             _ => {
@@ -402,14 +556,18 @@ impl FIFO {
                     self.x += 1;
                     result = self.pop_front();
                 }
-                if self.fetcher.buffer.len() > 0 {
+                if self.fetcher.buffer().len() > 0 {
                     if self.queue.len() <= 8 {
-                        for pixel in self.fetcher.buffer.clone().into_iter() {
+                        let buffer: Vec<Pixel> = self.fetcher.buffer().iter().map(|x| *x).collect();
+                        for pixel in buffer {
                             self.push_back(pixel);
                         }
                         let fetcher_x = self.x + self.queue.len() as u8;
-                        self.fetcher
-                            .init(self.get_fetcher_ptype(fetcher_x), fetcher_x, self.y);
+                        self.fetcher = self.get_fetcher_window_or_bg(
+                            self.check_window_or_bg(fetcher_x),
+                            fetcher_x,
+                            self.y,
+                        );
                     }
                 } else {
                     self.fetcher.trick();
@@ -417,9 +575,9 @@ impl FIFO {
                 result
             }
             FifoTrick::Sprite => {
-                if self.fetcher.buffer.len() > 0 {
+                if self.fetcher.buffer().len() > 0 {
                     let sprite_queue_len = self.sprite_queue.len();
-                    for (index, new_sprite_pixel) in self.fetcher.buffer.iter().enumerate() {
+                    for (index, new_sprite_pixel) in self.fetcher.buffer().iter().enumerate() {
                         if index < sprite_queue_len {
                             let old_sprite_pixel = self.sprite_queue[index];
                             if new_sprite_pixel.pvalue == 0 && old_sprite_pixel.pvalue == 0 {}
@@ -438,8 +596,11 @@ impl FIFO {
                     }
                     self.status = FifoTrick::BgWindow;
                     let fetcher_x = self.x + self.queue.len() as u8;
-                    self.fetcher
-                        .init(self.get_fetcher_ptype(fetcher_x), fetcher_x, self.y);
+                    self.fetcher = self.get_fetcher_window_or_bg(
+                        self.check_window_or_bg(fetcher_x),
+                        fetcher_x,
+                        self.y,
+                    );
                 } else {
                     self.fetcher.trick();
                 }
@@ -510,7 +671,15 @@ impl FIFO {
             None
         }
     }
-    fn get_fetcher_ptype(&self, x: u8) -> PixelType {
+    fn get_fetcher_window_or_bg(&self, ptype: PixelType, x: u8, y: u8) -> Box<dyn Fetcher> {
+        let mmu = self.mmu.clone();
+        match ptype {
+            BG => Box::new(FetcherBg::new(mmu, x, y)),
+            Window => Box::new(FetcherWindow::new(mmu, x, y)),
+            _ => panic!(""),
+        }
+    }
+    fn check_window_or_bg(&self, x: u8) -> PixelType {
         if self.check_window(x) {
             Window
         } else {
