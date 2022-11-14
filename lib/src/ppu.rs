@@ -155,18 +155,29 @@ impl Fetcher for FetcherBg {
         let mut result = Vec::new();
         let get_pixel_bit: Box<dyn Fn(u8) -> u8> = Box::new(|index: u8| 8 - index - 1);
         let buffer_index_start = (self.scan_x as u16 + self.scx as u16) % 8;
+        let bg_window_enable = self.mmu.borrow().ppu.lcdc.bg_window_enable;
         for buffer_index in buffer_index_start..8 {
             let pixel_bit = get_pixel_bit(buffer_index as u8);
             let pixel_low = check_bit(self.tile_data_low, pixel_bit as u8);
             let pixel_high = check_bit(self.tile_data_high, pixel_bit as u8);
             let pvalue = (pixel_low as u8) | ((pixel_high as u8) << 1);
             let pcolor = self.get_color_index(pvalue);
-            result.push(Pixel {
-                ptype: BG,
-                pvalue,
-                pcolor,
-                ..Pixel::default()
-            });
+            let pixel = if bg_window_enable {
+                Pixel {
+                    ptype: BG,
+                    pvalue,
+                    pcolor,
+                    ..Pixel::default()
+                }
+            } else {
+                Pixel {
+                    ptype: BG,
+                    pvalue: 0,
+                    pcolor: 0,
+                    ..Pixel::default()
+                }
+            };
+            result.push(pixel);
         }
         result
     }
@@ -720,7 +731,7 @@ impl FIFO {
             Some(sprite_pixel) => {
                 let bg_pixel = self.queue.pop_front().unwrap();
                 if sprite_pixel.bg_window_over_obj {
-                    if bg_pixel.pvalue == 0 {
+                    if bg_pixel.pcolor == 0 {
                         Some(sprite_pixel)
                     } else {
                         Some(bg_pixel)
