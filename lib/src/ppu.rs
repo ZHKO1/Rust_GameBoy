@@ -369,7 +369,7 @@ impl FIFO {
                 let mut result = None;
                 if self.queue.len() > 8 {
                     // 检查当前像素是否上层有Window或Sprite
-                    let front = self.front().unwrap();
+                    let front = self.front().unwrap().to_owned();
                     let new_fetch_event = self.check_overlap(front.ptype, self.x);
                     if let Some(event) = new_fetch_event {
                         match event {
@@ -419,30 +419,21 @@ impl FIFO {
             FifoTrick::Sprite => {
                 if self.fetcher.buffer.len() > 0 {
                     let sprite_queue_len = self.sprite_queue.len();
-                    for (index, pixel) in self.fetcher.buffer.iter().enumerate() {
+                    for (index, new_sprite_pixel) in self.fetcher.buffer.iter().enumerate() {
                         if index < sprite_queue_len {
-                            let origin_pixel = self.sprite_queue[index];
-                            match origin_pixel.ptype {
-                                BG | Window => {
-                                    if pixel.pvalue != 0 {
-                                        self.queue[index] = *pixel;
-                                    }
-                                }
-                                Sprite => {
-                                    if pixel.pvalue == 0 && origin_pixel.pvalue == 0 {}
-                                    if pixel.pvalue == 0 && origin_pixel.pvalue != 0 {}
-                                    if pixel.pvalue != 0 && origin_pixel.pvalue == 0 {
-                                        self.queue[index] = *pixel;
-                                    }
-                                    if pixel.pvalue != 0 && origin_pixel.pvalue != 0 {
-                                        if pixel.oam_priority < origin_pixel.oam_priority {
-                                            self.queue[index] = *pixel;
-                                        }
-                                    }
+                            let old_sprite_pixel = self.sprite_queue[index];
+                            if new_sprite_pixel.pvalue == 0 && old_sprite_pixel.pvalue == 0 {}
+                            if new_sprite_pixel.pvalue == 0 && old_sprite_pixel.pvalue != 0 {}
+                            if new_sprite_pixel.pvalue != 0 && old_sprite_pixel.pvalue == 0 {
+                                self.sprite_queue[index] = *new_sprite_pixel;
+                            }
+                            if new_sprite_pixel.pvalue != 0 && old_sprite_pixel.pvalue != 0 {
+                                if new_sprite_pixel.oam_priority < old_sprite_pixel.oam_priority {
+                                    self.sprite_queue[index] = *new_sprite_pixel;
                                 }
                             }
                         } else {
-                            self.sprite_queue.push_back(*pixel);
+                            self.sprite_queue.push_back(*new_sprite_pixel);
                         }
                     }
                     self.status = FifoTrick::BgWindow;
@@ -526,15 +517,11 @@ impl FIFO {
             BG
         }
     }
+    fn front(&mut self) -> Option<&Pixel> {
+        self.sprite_queue.front().or(self.queue.front())
+    }
     fn push_back(&mut self, pixel: Pixel) {
         self.queue.push_back(pixel);
-    }
-    fn front(&mut self) -> Option<Pixel> {
-        let sprite_pixel_option = self.sprite_queue.front();
-        match sprite_pixel_option {
-            Some(sprite_pixel) => Some(*sprite_pixel),
-            None => self.queue.front().map(|x| *x),
-        }
     }
     fn pop_front(&mut self) -> Option<Pixel> {
         let sprite_pixel_option = self.sprite_queue.pop_front();
@@ -557,10 +544,6 @@ impl FIFO {
             }
             None => self.queue.pop_front(),
         }
-    }
-    fn clear(&mut self) {
-        self.queue.clear();
-        self.oam.clear();
     }
 }
 
@@ -731,7 +714,6 @@ impl PPU {
             Drawing => {}
             HBlank => {
                 self.ly_buffer.clear();
-                self.fifo.clear();
             }
             VBlank => {}
         };
