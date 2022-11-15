@@ -84,8 +84,8 @@ impl GameBoy {
         let mode = if gbc_flag { GameBoyMode::GBC } else { GameBoyMode::GB };
         let mmu = Mmu::new(mode, bios, cartridge);
         let rc_refcell_mmu = Rc::new(RefCell::new(mmu));
-        let cpu = Cpu::new(mode, rc_refcell_mmu.clone(), skip_bios);
-        let ppu = PPU::new(mode, rc_refcell_mmu.clone());
+        let cpu = Cpu::new(rc_refcell_mmu.clone(), skip_bios);
+        let ppu = PPU::new(rc_refcell_mmu.clone());
         let timer = Timer::new(mode, rc_refcell_mmu.clone());
         Self {
             mmu: rc_refcell_mmu.clone(),

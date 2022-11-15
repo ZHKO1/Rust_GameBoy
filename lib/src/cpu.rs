@@ -151,7 +151,8 @@ pub struct Cpu {
 }
 
 impl Cpu {
-    pub fn new(mode: GameBoyMode, mmu: Rc<RefCell<Mmu>>, skip_bios: bool) -> Self {
+    pub fn new(mmu: Rc<RefCell<Mmu>>, skip_bios: bool) -> Self {
+        let mode = mmu.borrow().mode;
         let reg = Registers::new(mode);
         let mut cpu = Cpu {
             mode,

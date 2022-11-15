@@ -177,7 +177,7 @@ impl Memory for Speed {
 }
 
 pub struct Mmu {
-    mode: GameBoyMode,
+    pub mode: GameBoyMode,
     boot: [u8; 0x100],
     pub cartridge: Box<dyn Cartridge>,
     pub joypad: JoyPad,
@@ -303,6 +303,13 @@ impl Memory for Mmu {
                     self.other.get(index)
                 }
             }
+            0xFF68 | 0xFF69 | 0xFF6A | 0xFF6B => {
+                if self.mode == GameBoyMode::GBC {
+                    self.ppu.get(index)
+                } else {
+                    self.other.get(index)
+                }
+            }
             0xFF70 | 0xC000..=0xDFFF => {
                 if self.mode == GameBoyMode::GBC {
                     self.wram.get(index)
@@ -340,6 +347,13 @@ impl Memory for Mmu {
             0xFF51..=0xFF55 => {
                 if self.mode == GameBoyMode::GBC {
                     self.hdma.set(index, value)
+                } else {
+                    self.other.set(index, value)
+                }
+            }
+            0xFF68 | 0xFF69 | 0xFF6A | 0xFF6B => {
+                if self.mode == GameBoyMode::GBC {
+                    self.ppu.set(index, value)
                 } else {
                     self.other.set(index, value)
                 }

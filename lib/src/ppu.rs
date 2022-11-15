@@ -68,11 +68,37 @@ trait Fetcher {
     fn buffer(&self) -> &[Pixel];
 }
 
+struct BGMapAttr {
+    bg_to_oam: bool,
+    y_flip: bool,
+    x_flip: bool,
+    vram_bank: bool,
+    bg_palette: u8,
+}
+impl From<u8> for BGMapAttr {
+    fn from(val: u8) -> Self {
+        let bg_to_oam = check_bit(val, 7);
+        let y_flip = check_bit(val, 6);
+        let x_flip = check_bit(val, 5);
+        let vram_bank = check_bit(val, 3);
+        let bg_palette = val & 0x07;
+        Self {
+            bg_to_oam,
+            y_flip,
+            x_flip,
+            vram_bank,
+            bg_palette,
+        }
+    }
+}
+
 struct FetcherBg {
+    mode: GameBoyMode,
     scan_x: u8,
     scan_y: u8,
     scx: u8,
     scy: u8,
+    bg_map_attr: BGMapAttr,
     cycles: u16,
     mmu: Rc<RefCell<Mmu>>,
     status: FetcherStatus,
@@ -83,11 +109,14 @@ struct FetcherBg {
 }
 impl Fetcher for FetcherBg {
     fn new(mmu: Rc<RefCell<Mmu>>, scan_x: u8, scan_y: u8) -> Self {
+        let mode = mmu.borrow().mode;
         Self {
+            mode,
             scan_x,
             scan_y,
             scx: 0,
             scy: 0,
+            bg_map_attr: BGMapAttr::from(0),
             mmu,
             cycles: 0,
             status: GetTile,
@@ -131,49 +160,93 @@ impl Fetcher for FetcherBg {
         let bg_map_x = (self.scan_x as u16 + self.scx as u16) % 256 / 8;
         let bg_map_y = (self.scan_y as u16 + self.scy as u16) % 256 / 8;
         let bg_map_index = bg_map_x + bg_map_y * 32;
-        let bg_map_byte = self.mmu.borrow().get(bg_map_start + bg_map_index);
+        let bg_map_byte = self
+            .mmu
+            .borrow()
+            .ppu
+            .vram
+            .get_by_bank(bg_map_start + bg_map_index, false);
         let tile_index: u16 = if bg_window_tile_data_area {
             0x8000 + bg_map_byte as u16 * 8 * 2
         } else {
             (0x9000 as i32 + (bg_map_byte as i8) as i32 * 8 * 2) as u16
         };
+        if self.mode == GameBoyMode::GBC {
+            let bg_map_attr_val = self
+                .mmu
+                .borrow()
+                .ppu
+                .vram
+                .get_by_bank(bg_map_start + bg_map_index, true);
+            self.bg_map_attr = BGMapAttr::from(bg_map_attr_val);
+        }
         tile_index
     }
     fn get_tile_data_low(&self) -> u8 {
         let tile_index = self.tile_index;
-        let tile_pixel_y = (self.scan_y as u16 + self.scy as u16) % 8;
-        let tile_byte_low = self.mmu.borrow().get(tile_index + tile_pixel_y * 2);
-        tile_byte_low
+        let mut tile_pixel_y = (self.scan_y as u16 + self.scy as u16) % 8;
+        if self.mode == GameBoyMode::GBC {
+            if self.bg_map_attr.y_flip {
+                tile_pixel_y = (8 - 1) - tile_pixel_y;
+            }
+            self.mmu
+                .borrow()
+                .ppu
+                .vram
+                .get_by_bank(tile_index + tile_pixel_y * 2, self.bg_map_attr.vram_bank)
+        } else {
+            self.mmu
+                .borrow()
+                .ppu
+                .vram
+                .get_by_bank(tile_index + tile_pixel_y * 2, false)
+        }
     }
     fn get_tile_data_high(&self) -> u8 {
         let tile_index = self.tile_index;
-        let tile_pixel_y = (self.scan_y as u16 + self.scy as u16) % 8;
-        let tile_byte_high = self.mmu.borrow().get(tile_index + tile_pixel_y * 2 + 1);
-        tile_byte_high
+        let mut tile_pixel_y = (self.scan_y as u16 + self.scy as u16) % 8;
+        if self.mode == GameBoyMode::GBC {
+            if self.bg_map_attr.y_flip {
+                tile_pixel_y = (8 - 1) - tile_pixel_y;
+            }
+            self.mmu.borrow().ppu.vram.get_by_bank(
+                tile_index + tile_pixel_y * 2 + 1,
+                self.bg_map_attr.vram_bank,
+            )
+        } else {
+            self.mmu
+                .borrow()
+                .ppu
+                .vram
+                .get_by_bank(tile_index + tile_pixel_y * 2 + 1, false)
+        }
     }
     fn get_buffer(&mut self) -> Vec<Pixel> {
         let mut result = Vec::new();
-        let get_pixel_bit: Box<dyn Fn(u8) -> u8> = Box::new(|index: u8| 8 - index - 1);
+        let mut get_pixel_bit: Box<dyn Fn(u8) -> u8> = Box::new(|index: u8| 8 - index - 1);
         let buffer_index_start = (self.scan_x as u16 + self.scx as u16) % 8;
         let bg_window_enable = self.mmu.borrow().ppu.lcdc.bg_window_enable;
+        if (self.mode == GameBoyMode::GBC) && self.bg_map_attr.x_flip {
+            get_pixel_bit = Box::new(|index: u8| index);
+        }
         for buffer_index in buffer_index_start..8 {
             let pixel_bit = get_pixel_bit(buffer_index as u8);
             let pixel_low = check_bit(self.tile_data_low, pixel_bit as u8);
             let pixel_high = check_bit(self.tile_data_high, pixel_bit as u8);
             let pvalue = (pixel_low as u8) | ((pixel_high as u8) << 1);
             let pcolor = self.get_color_index(pvalue);
-            let pixel = if bg_window_enable {
+            let pixel = if !bg_window_enable && self.mode == GameBoyMode::GB {
                 Pixel {
                     ptype: BG,
-                    pvalue,
-                    pcolor,
+                    pvalue: 0,
+                    pcolor: 0,
                     ..Pixel::default()
                 }
             } else {
                 Pixel {
                     ptype: BG,
-                    pvalue: 0,
-                    pcolor: 0,
+                    pvalue,
+                    pcolor,
                     ..Pixel::default()
                 }
             };
@@ -182,14 +255,19 @@ impl Fetcher for FetcherBg {
         result
     }
     fn get_color_index(&self, pvalue: u8) -> u8 {
-        let palette = self.mmu.borrow().ppu.bgp;
-        match pvalue {
-            0 => palette & 0b11,
-            1 => (palette & 0b1100) >> 2,
-            2 => (palette & 0b110000) >> 4,
-            3 => (palette & 0b11000000) >> 6,
-            _ => {
-                panic!("color index is out of range {}", pvalue);
+        if self.mode == GameBoyMode::GBC {
+            let bg_palette = self.bg_map_attr.bg_palette;
+            bg_palette * 4 + pvalue * 2
+        } else {
+            let palette = self.mmu.borrow().ppu.bgp;
+            match pvalue {
+                0 => palette & 0b11,
+                1 => (palette & 0b1100) >> 2,
+                2 => (palette & 0b110000) >> 4,
+                3 => (palette & 0b11000000) >> 6,
+                _ => {
+                    panic!("color index is out of range {}", pvalue);
+                }
             }
         }
     }
@@ -452,7 +530,6 @@ impl Fetcher for FetcherSprite {
     }
 }
 
-#[derive(Clone, Copy)]
 struct OAM {
     y: u8,
     x: u8,
@@ -764,7 +841,8 @@ pub struct PPU {
     pub frame_buffer: [u32; WIDTH * HEIGHT],
 }
 impl PPU {
-    pub fn new(mode: GameBoyMode, mmu: Rc<RefCell<Mmu>>) -> Self {
+    pub fn new(mmu: Rc<RefCell<Mmu>>) -> Self {
+        let mode = mmu.borrow().mode;
         let fifo = FIFO::new(mmu.clone());
         let mut ppu = PPU {
             mode,
@@ -812,7 +890,7 @@ impl PPU {
                 Drawing => {
                     let pixel_option = self.fifo.trick();
                     if let Some(pixel) = pixel_option {
-                        self.ly_buffer.push(self.get_pixel_color(pixel.pcolor));
+                        self.ly_buffer.push(self.get_pixel_color(pixel));
                         if self.ly_buffer.len() == WIDTH {
                             let ly = self.get_ly();
                             for (scan_x, pixel) in self.ly_buffer.iter().enumerate() {
@@ -866,14 +944,32 @@ impl PPU {
         self.lcd_enable = lcd_enable;
         is_refresh
     }
-    fn get_pixel_color(&self, color_value: u8) -> u32 {
-        match color_value {
-            0 => Color::WHITE as u32,
-            1 => Color::LightGray as u32,
-            2 => Color::DarkGray as u32,
-            3 => Color::BlackGray as u32,
-            _ => {
-                panic!("color_value is out of range {}", color_value);
+    fn get_pixel_color(&self, pixel: Pixel) -> u32 {
+        if self.mode == GameBoyMode::GBC {
+            let rgb_memory = match pixel.ptype {
+                BG | Window => self.mmu.borrow().ppu.bcp.memory,
+                Sprite => self.mmu.borrow().ppu.ocp.memory,
+            };
+            let rgb_low = rgb_memory[pixel.pcolor as usize];
+            let rgb_high = rgb_memory[pixel.pcolor as usize + 1];
+            let color = u16::from_be_bytes([rgb_high, rgb_low]);
+            let red = ((color & 0x7C00) >> 10) as u32;
+            let green = ((color & 0x03E0) >> 5) as u32;
+            let blue = (color & 0x001F) as u32;
+            let red = (red << 3) | (red >> 2);
+            let green = (green << 3) | (green >> 2);
+            let blue = (blue << 3) | (blue >> 2);
+            
+            (red << 16) | (green << 8) | blue
+        } else {
+            match pixel.pcolor {
+                0 => Color::WHITE as u32,
+                1 => Color::LightGray as u32,
+                2 => Color::DarkGray as u32,
+                3 => Color::BlackGray as u32,
+                _ => {
+                    panic!("color_value is out of range {}", pixel.pcolor);
+                }
             }
         }
     }
@@ -1075,6 +1171,15 @@ impl VRAM {
             0
         }
     }
+    fn get_by_bank(&self, index: u16, bank: bool) -> u8 {
+        if self.mode == GameBoyMode::GBC {
+            let bank_index = if bank { 1 } else { 0 };
+            let index = index - 0x8000 + bank_index * (0x9FFF - 0x8000 + 1);
+            self.memory[index as usize]
+        } else {
+            self.get(index)
+        }
+    }
 }
 impl Memory for VRAM {
     fn get(&self, index: u16) -> u8 {
@@ -1101,6 +1206,90 @@ impl Memory for VRAM {
     }
 }
 
+struct BCP {
+    auto_increment: bool,
+    address: u8,
+    memory: [u8; 64],
+}
+impl BCP {
+    fn new() -> Self {
+        Self {
+            auto_increment: false,
+            address: 0,
+            memory: [0; 64],
+        }
+    }
+}
+impl Memory for BCP {
+    fn get(&self, index: u16) -> u8 {
+        match index {
+            0xFF68 => {
+                let auto_increment_bit = if self.auto_increment { 1 } else { 0 };
+                auto_increment_bit << 7 | self.address | 0b01000000
+            }
+            0xFF69 => self.memory[self.address as usize],
+            _ => panic!("BCP out of range"),
+        }
+    }
+    fn set(&mut self, index: u16, value: u8) {
+        match index {
+            0xFF68 => {
+                self.auto_increment = check_bit(value, 7);
+                self.address = value & 0x3F;
+            }
+            0xFF69 => {
+                self.memory[self.address as usize] = value;
+                if self.auto_increment {
+                    self.address = self.address + 1;
+                }
+            }
+            _ => panic!("BCP out of range"),
+        }
+    }
+}
+
+struct OCP {
+    auto_increment: bool,
+    address: u8,
+    memory: [u8; 64],
+}
+impl OCP {
+    fn new() -> Self {
+        Self {
+            auto_increment: false,
+            address: 0,
+            memory: [0; 64],
+        }
+    }
+}
+impl Memory for OCP {
+    fn get(&self, index: u16) -> u8 {
+        match index {
+            0xFF6A => {
+                let auto_increment_bit = if self.auto_increment { 1 } else { 0 };
+                auto_increment_bit << 7 | self.address | 0b01000000
+            }
+            0xFF6B => self.memory[self.address as usize],
+            _ => panic!("OCP out of range"),
+        }
+    }
+    fn set(&mut self, index: u16, value: u8) {
+        match index {
+            0xFF6A => {
+                self.auto_increment = check_bit(value, 7);
+                self.address = value & 0x3F;
+            }
+            0xFF6B => {
+                self.memory[self.address as usize] = value;
+                if self.auto_increment {
+                    self.address = self.address + 1;
+                }
+            }
+            _ => panic!("OCP out of range"),
+        }
+    }
+}
+
 pub struct PpuMmu {
     mode: GameBoyMode,
     interrupt: Rc<RefCell<Interrupt>>,
@@ -1116,6 +1305,8 @@ pub struct PpuMmu {
     pub op0: u8,
     pub op1: u8,
     vram: VRAM,
+    bcp: BCP,
+    ocp: OCP,
     oam: [u8; 0xFE9F - 0xFE00 + 1],
 }
 impl PpuMmu {
@@ -1125,6 +1316,8 @@ impl PpuMmu {
         let lyc = Rc::new(RefCell::new(0));
         let stat = STAT::new(ly.clone(), lyc.clone());
         let vram = VRAM::new(mode);
+        let bcp = BCP::new();
+        let ocp = OCP::new();
         Self {
             mode,
             interrupt,
@@ -1140,6 +1333,8 @@ impl PpuMmu {
             op0: 0,
             op1: 0,
             vram,
+            bcp,
+            ocp,
             oam: [0; 0xFE9F - 0xFE00 + 1],
         }
     }
@@ -1212,6 +1407,8 @@ impl Memory for PpuMmu {
             0xFF4A => self.wy,
             0xFF4B => self.wx,
             0xFF4F | 0x8000..=0x9FFF => self.vram.get(index),
+            0xFF68 | 0xFF69 => self.bcp.get(index),
+            0xFF6A | 0xFF6B => self.ocp.get(index),
             0xFE00..=0xFE9F => self.oam[(index - 0xFE00) as usize],
             _ => panic!("PpuMmu out of range"),
         }
@@ -1230,6 +1427,8 @@ impl Memory for PpuMmu {
             0xFF4A => self.wy = value,
             0xFF4B => self.wx = value,
             0xFF4F | 0x8000..=0x9FFF => self.vram.set(index, value),
+            0xFF68 | 0xFF69 => self.bcp.set(index, value),
+            0xFF6A | 0xFF6B => self.ocp.set(index, value),
             0xFE00..=0xFE9F => self.oam[(index - 0xFE00) as usize] = value,
             _ => panic!("PpuMmu out of range"),
         }
