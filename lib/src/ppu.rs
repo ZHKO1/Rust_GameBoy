@@ -35,6 +35,7 @@ struct Pixel {
     pvalue: u8,
     bg_window_over_obj: bool,
     oam_priority: usize,
+    bg_to_oam: bool,
 }
 
 impl Default for Pixel {
@@ -45,6 +46,7 @@ impl Default for Pixel {
             pvalue: 0,
             bg_window_over_obj: false,
             oam_priority: 40,
+            bg_to_oam: false,
         }
     }
 }
@@ -235,18 +237,28 @@ impl Fetcher for FetcherBg {
             let pixel_high = check_bit(self.tile_data_high, pixel_bit as u8);
             let pvalue = (pixel_low as u8) | ((pixel_high as u8) << 1);
             let pcolor = self.get_color_index(pvalue);
-            let pixel = if !bg_window_enable && self.mode == GameBoyMode::GB {
-                Pixel {
-                    ptype: BG,
-                    pvalue: 0,
-                    pcolor: 0,
-                    ..Pixel::default()
+            let pixel = if self.mode == GameBoyMode::GB {
+                if !bg_window_enable {
+                    Pixel {
+                        ptype: BG,
+                        pvalue: 0,
+                        pcolor: 0,
+                        ..Pixel::default()
+                    }
+                } else {
+                    Pixel {
+                        ptype: BG,
+                        pvalue,
+                        pcolor,
+                        ..Pixel::default()
+                    }
                 }
             } else {
                 Pixel {
                     ptype: BG,
                     pvalue,
                     pcolor,
+                    bg_to_oam: self.bg_map_attr.bg_to_oam,
                     ..Pixel::default()
                 }
             };
@@ -426,18 +438,28 @@ impl Fetcher for FetcherWindow {
             let pixel_high = check_bit(self.tile_data_high, pixel_bit as u8);
             let pvalue = (pixel_low as u8) | ((pixel_high as u8) << 1);
             let pcolor = self.get_color_index(pvalue);
-            let pixel = if !bg_window_enable && self.mode == GameBoyMode::GB {
-                Pixel {
-                    ptype: Window,
-                    pvalue: 0,
-                    pcolor: 0,
-                    ..Pixel::default()
+            let pixel = if self.mode == GameBoyMode::GB {
+                if !bg_window_enable {
+                    Pixel {
+                        ptype: Window,
+                        pvalue: 0,
+                        pcolor: 0,
+                        ..Pixel::default()
+                    }
+                } else {
+                    Pixel {
+                        ptype: Window,
+                        pvalue,
+                        pcolor,
+                        ..Pixel::default()
+                    }
                 }
             } else {
                 Pixel {
                     ptype: Window,
                     pvalue,
                     pcolor,
+                    bg_to_oam: self.bg_map_attr.bg_to_oam,
                     ..Pixel::default()
                 }
             };
@@ -539,11 +561,14 @@ impl Fetcher for FetcherSprite {
         if self.oam.y_flip {
             tile_pixel_y = (height - 1) - tile_pixel_y;
         }
-        self.mmu
-            .borrow()
-            .ppu
-            .vram
-            .get_by_bank(tile_index + tile_pixel_y * 2, self.oam.vram_bank)
+        self.mmu.borrow().ppu.vram.get_by_bank(
+            tile_index + tile_pixel_y * 2,
+            if self.mode == GameBoyMode::GB {
+                false
+            } else {
+                self.oam.vram_bank
+            },
+        )
     }
     fn get_tile_data_high(&self) -> u8 {
         let tile_index = self.tile_index;
@@ -553,11 +578,14 @@ impl Fetcher for FetcherSprite {
         if self.oam.y_flip {
             tile_pixel_y = (height - 1) - tile_pixel_y;
         }
-        self.mmu
-            .borrow()
-            .ppu
-            .vram
-            .get_by_bank(tile_index + tile_pixel_y * 2 + 1, self.oam.vram_bank)
+        self.mmu.borrow().ppu.vram.get_by_bank(
+            tile_index + tile_pixel_y * 2 + 1,
+            if self.mode == GameBoyMode::GB {
+                false
+            } else {
+                self.oam.vram_bank
+            },
+        )
     }
     fn get_buffer(&mut self) -> Vec<Pixel> {
         let mut result = Vec::new();
@@ -578,6 +606,7 @@ impl Fetcher for FetcherSprite {
                 pcolor,
                 bg_window_over_obj: self.oam.bg_window_over_obj,
                 oam_priority: self.oam.priority,
+                ..Pixel::default()
             });
         }
         result
@@ -734,6 +763,7 @@ impl FIFO {
                     if let Some(event) = new_fetch_event {
                         match event {
                             Window => {
+                                self.status = FifoTrick::BgWindow;
                                 self.queue.clear();
                                 self.fetcher =
                                     self.get_fetcher_window_or_bg(Window, self.x, self.y);
@@ -764,6 +794,7 @@ impl FIFO {
                             self.push_back(pixel);
                         }
                         let fetcher_x = self.x + self.queue.len() as u8;
+                        self.status = FifoTrick::BgWindow;
                         self.fetcher = self.get_fetcher_window_or_bg(
                             self.check_window_or_bg(fetcher_x),
                             fetcher_x,
@@ -902,17 +933,50 @@ impl FIFO {
         match sprite_pixel_option {
             Some(sprite_pixel) => {
                 let bg_pixel = self.queue.pop_front().unwrap();
-                if sprite_pixel.bg_window_over_obj {
-                    if bg_pixel.pcolor == 0 {
-                        Some(sprite_pixel)
+                if self.mmu.borrow().mode == GameBoyMode::GBC {
+                    let bg_window_enable = self.mmu.borrow().ppu.lcdc.bg_window_enable;
+                    if !bg_window_enable {
+                        if sprite_pixel.pvalue == 0 {
+                            Some(bg_pixel)
+                        } else {
+                            Some(sprite_pixel)
+                        }
                     } else {
-                        Some(bg_pixel)
+                        if bg_pixel.bg_to_oam {
+                            if bg_pixel.pvalue == 0 {
+                                Some(sprite_pixel)
+                            } else {
+                                Some(bg_pixel)
+                            }
+                        } else {
+                            if sprite_pixel.bg_window_over_obj {
+                                if bg_pixel.pvalue == 0 {
+                                    Some(sprite_pixel)
+                                } else {
+                                    Some(bg_pixel)
+                                }
+                            } else {
+                                if sprite_pixel.pvalue == 0 {
+                                    Some(bg_pixel)
+                                } else {
+                                    Some(sprite_pixel)
+                                }
+                            }
+                        }
                     }
                 } else {
-                    if sprite_pixel.pvalue == 0 {
-                        Some(bg_pixel)
+                    if sprite_pixel.bg_window_over_obj {
+                        if bg_pixel.pcolor == 0 {
+                            Some(sprite_pixel)
+                        } else {
+                            Some(bg_pixel)
+                        }
                     } else {
-                        Some(sprite_pixel)
+                        if sprite_pixel.pvalue == 0 {
+                            Some(bg_pixel)
+                        } else {
+                            Some(sprite_pixel)
+                        }
                     }
                 }
             }
