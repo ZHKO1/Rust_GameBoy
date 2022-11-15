@@ -45,7 +45,7 @@ struct HDMA {
     source_low: u8,
     destination_high: u8,
     destination_low: u8,
-    memory: [u8; 0xFF55 - 0xFF51 + 1],
+    length_mode_start: u8,
 }
 impl HDMA {
     fn new() -> Self {
@@ -54,23 +54,26 @@ impl HDMA {
             source_low: 0xFF,
             destination_high: 0xFF,
             destination_low: 0xFF,
-            memory: [0; 0xFF55 - 0xFF51 + 1],
+            length_mode_start: 0xFF,
         }
     }
     fn get_source_destination_length(&self) -> (u16, u16, u16) {
         let source = u16::from_be_bytes([self.source_high, self.source_low]) & 0xFFF0;
         let destination =
             (u16::from_be_bytes([self.destination_high, self.destination_low]) | 0x8000) & 0xFFF0;
-        let length = ((self.memory[0xFF55 - 0xFF51] & 0x7F) as u16 + 1) << 4;
+        let length = ((self.length_mode_start & 0x7F) as u16 + 1) << 4;
         (source, destination, length)
     }
 }
 impl Memory for HDMA {
     fn get(&self, index: u16) -> u8 {
-        if index >= 0xFF51 && index <= 0xFF55 {
-            self.memory[index as usize - 0xFF51]
-        } else {
-            panic!("HDMA get index not in 0xFF51~0xFF55")
+        match index {
+            0xFF51 => self.source_high,
+            0xFF52 => self.source_low,
+            0xFF53 => self.destination_high,
+            0xFF54 => self.destination_low,
+            0xFF55 => self.length_mode_start,
+            _ => panic!("HDMA get index not in 0xFF51~0xFF55"),
         }
     }
     fn set(&mut self, index: u16, value: u8) {
@@ -88,7 +91,7 @@ impl Memory for HDMA {
                 self.destination_low = value;
             }
             0xFF55 => {
-                self.memory[index as usize - 0xFF51] = value;
+                self.length_mode_start = value;
             }
             _ => {}
         }
@@ -328,7 +331,6 @@ impl Memory for Mmu {
         }
     }
     fn set(&mut self, index: u16, value: u8) {
-        self.bind_event(index, value);
         match index {
             0x0000..=0x7FFF => self.cartridge.set(index, value),
             0x8000..=0x9FFF => self.ppu.set(index, value),
@@ -373,6 +375,7 @@ impl Memory for Mmu {
             }
             _ => self.other.set(index, value),
         }
+        self.bind_event(index, value);
     }
 }
 
