@@ -5,8 +5,8 @@ mod test {
                 #[test]
                 fn $func() {
                     use crate::gameboy::GameBoy;
+                    use crate::util::read_rom;
                     use std::time::SystemTime;
-                    use crate::util::{read_rom};
                     let bios_path = "";
                     let rom_path = format!("{}{}{}{}", "tests/gb-test-roms/", $path, $game, ".gb");
                     let bios = read_rom(bios_path).unwrap_or(vec![]);
@@ -79,8 +79,8 @@ mod test {
                 #[test]
                 fn $func() {
                     use crate::gameboy::GameBoy;
+                    use crate::util::read_rom;
                     use std::time::SystemTime;
-                    use crate::util::{read_rom};
                     let bios_path = "";
                     let rom_path = format!("{}{}{}{}", "tests/mts/", $path, $game, ".gb");
                     let bios = read_rom(bios_path).unwrap_or(vec![]);
@@ -143,6 +143,69 @@ mod test {
                 test!(rom_32mb, "emulator-only/mbc5/", "rom_32Mb");
                 test!(rom_64mb, "emulator-only/mbc5/", "rom_64Mb");
                 test!(rom_512kb, "emulator-only/mbc5/", "rom_512kb");
+            }
+        }
+    }
+
+    mod dmg_acid2 {
+
+        #[test]
+        fn check_frame_buffer() {
+            use crate::gameboy::GameBoy;
+            use crate::util::read_rom;
+            use std::fs::File;
+            use std::io::Read;
+            // use std::io::Write;
+            use std::path::Path;
+            use std::time::SystemTime;
+
+            let expect = get_expect();
+            let bios_path = "";
+            let rom_path = format!("tests/dmg_acid2/dmg-acid2.gb");
+            let bios = read_rom(bios_path).unwrap_or(vec![]);
+            let rom = read_rom(rom_path).unwrap();
+            let mut gameboy = GameBoy::new(bios, rom);
+            let start = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+            let buffer: String;
+            let mut clocks: usize = 0;
+            loop {
+                gameboy.trick();
+                clocks += 1;
+                if clocks >= 100000 {
+                    let nowtime = SystemTime::now()
+                        .duration_since(SystemTime::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
+                    if nowtime - start > 3 {
+                        let frame_buffer = gameboy.get_frame_buffer();
+                        buffer = frame_buffer
+                            .iter()
+                            .map(|x| x.to_string())
+                            .collect::<Vec<String>>()
+                            .join(",");
+                        break;
+                    }
+                    clocks = 0;
+                }
+            }
+            assert_eq!(buffer, expect);
+
+            fn get_expect() -> String {
+                let path = Path::new("tests/dmg_acid2/frame_buffer");
+                let display = path.display();
+                let mut file = match File::open(&path) {
+                    Err(why) => panic!("File.open {display} Err:{}", why),
+                    Ok(file) => file,
+                };
+                let mut expect = String::new();
+                match file.read_to_string(&mut expect) {
+                    Err(_) => panic!("file {display} read_to_string"),
+                    Ok(_) => {}
+                };
+                expect
             }
         }
     }
