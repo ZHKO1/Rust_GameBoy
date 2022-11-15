@@ -257,7 +257,7 @@ impl Fetcher for FetcherBg {
     fn get_color_index(&self, pvalue: u8) -> u8 {
         if self.mode == GameBoyMode::GBC {
             let bg_palette = self.bg_map_attr.bg_palette;
-            bg_palette * 4 + pvalue * 2
+            bg_palette * 4 * 2 + pvalue * 2
         } else {
             let palette = self.mmu.borrow().ppu.bgp;
             match pvalue {
@@ -953,14 +953,16 @@ impl PPU {
             let rgb_low = rgb_memory[pixel.pcolor as usize];
             let rgb_high = rgb_memory[pixel.pcolor as usize + 1];
             let color = u16::from_be_bytes([rgb_high, rgb_low]);
-            let red = ((color & 0x7C00) >> 10) as u32;
+            let blue = ((color & 0x7C00) >> 10) as u32;
             let green = ((color & 0x03E0) >> 5) as u32;
-            let blue = (color & 0x001F) as u32;
-            let red = (red << 3) | (red >> 2);
-            let green = (green << 3) | (green >> 2);
-            let blue = (blue << 3) | (blue >> 2);
+            let red = (color & 0x001F) as u32;
             
-            (red << 16) | (green << 8) | blue
+            let hex_red = (red << 3) | (red >> 2);
+            let hex_green = (green << 3) | (green >> 2);
+            let hex_blue = (blue << 3) | (blue >> 2);
+
+            let result = (hex_red << 16) | (hex_green << 8) | hex_blue;
+            result
         } else {
             match pixel.pcolor {
                 0 => Color::WHITE as u32,
@@ -1241,6 +1243,9 @@ impl Memory for BCP {
                 self.memory[self.address as usize] = value;
                 if self.auto_increment {
                     self.address = self.address + 1;
+                    if self.address == 0x40 {
+                        self.address = 0;
+                    }
                 }
             }
             _ => panic!("BCP out of range"),
@@ -1283,6 +1288,9 @@ impl Memory for OCP {
                 self.memory[self.address as usize] = value;
                 if self.auto_increment {
                     self.address = self.address + 1;
+                    if self.address == 0x40 {
+                        self.address = 0;
+                    }
                 }
             }
             _ => panic!("OCP out of range"),
