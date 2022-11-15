@@ -468,6 +468,7 @@ impl Fetcher for FetcherWindow {
 }
 
 struct FetcherSprite {
+    mode: GameBoyMode,
     scan_x: u8,
     scan_y: u8,
     oam: OAM,
@@ -486,7 +487,9 @@ impl FetcherSprite {
 }
 impl Fetcher for FetcherSprite {
     fn new(mmu: Rc<RefCell<Mmu>>, scan_x: u8, scan_y: u8) -> Self {
+        let mode = mmu.borrow().mode;
         Self {
+            mode,
             scan_x,
             scan_y,
             oam: OAM::default(),
@@ -536,8 +539,11 @@ impl Fetcher for FetcherSprite {
         if self.oam.y_flip {
             tile_pixel_y = (height - 1) - tile_pixel_y;
         }
-        let tile_byte_low = self.mmu.borrow().get(tile_index + tile_pixel_y * 2);
-        tile_byte_low
+        self.mmu
+            .borrow()
+            .ppu
+            .vram
+            .get_by_bank(tile_index + tile_pixel_y * 2, self.oam.vram_bank)
     }
     fn get_tile_data_high(&self) -> u8 {
         let tile_index = self.tile_index;
@@ -547,8 +553,11 @@ impl Fetcher for FetcherSprite {
         if self.oam.y_flip {
             tile_pixel_y = (height - 1) - tile_pixel_y;
         }
-        let tile_byte_high = self.mmu.borrow().get(tile_index + tile_pixel_y * 2 + 1);
-        tile_byte_high
+        self.mmu
+            .borrow()
+            .ppu
+            .vram
+            .get_by_bank(tile_index + tile_pixel_y * 2 + 1, self.oam.vram_bank)
     }
     fn get_buffer(&mut self) -> Vec<Pixel> {
         let mut result = Vec::new();
@@ -574,20 +583,25 @@ impl Fetcher for FetcherSprite {
         result
     }
     fn get_color_index(&self, pvalue: u8) -> u8 {
-        let palette = {
-            if self.oam.palette {
-                self.mmu.borrow().ppu.op1
-            } else {
-                self.mmu.borrow().ppu.op0
-            }
-        };
-        match pvalue {
-            0 => palette & 0b11,
-            1 => (palette & 0b1100) >> 2,
-            2 => (palette & 0b110000) >> 4,
-            3 => (palette & 0b11000000) >> 6,
-            _ => {
-                panic!("color index is out of range {}", pvalue);
+        if self.mode == GameBoyMode::GBC {
+            let cpalette = self.oam.cpalette;
+            cpalette * 4 * 2 + pvalue * 2
+        } else {
+            let palette = {
+                if self.oam.palette {
+                    self.mmu.borrow().ppu.op1
+                } else {
+                    self.mmu.borrow().ppu.op0
+                }
+            };
+            match pvalue {
+                0 => palette & 0b11,
+                1 => (palette & 0b1100) >> 2,
+                2 => (palette & 0b110000) >> 4,
+                3 => (palette & 0b11000000) >> 6,
+                _ => {
+                    panic!("color index is out of range {}", pvalue);
+                }
             }
         }
     }
@@ -604,26 +618,41 @@ struct OAM {
     x_flip: bool,
     y_flip: bool,
     palette: bool,
+    cpalette: u8,
+    vram_bank: bool,
     priority: usize,
 }
 impl OAM {
-    fn new(y: u8, x: u8, tile_index: u8, flags: u8, priority: usize) -> Self {
-        Self {
-            y,
-            x,
-            tile_index,
-            bg_window_over_obj: check_bit(flags, 7),
-            x_flip: check_bit(flags, 5),
-            y_flip: check_bit(flags, 6),
-            palette: check_bit(flags, 4),
-            priority,
-        }
+    fn set(&mut self, y: u8, x: u8, tile_index: u8, priority: usize) {
+        self.y = y;
+        self.x = x;
+        self.tile_index = tile_index;
+        self.priority = priority;
     }
     fn is_scaned(&self, ly: u8, obj_size: bool) -> bool {
         let height = if obj_size { 16 } else { 8 };
         let y_start = self.y as i32 - 16;
         let y_end = self.y as i32 + height - 16;
         ((ly as i32) >= y_start) && ((ly as i32) < y_end) && (self.x != 0)
+    }
+}
+impl From<u8> for OAM {
+    fn from(val: u8) -> Self {
+        let bg_window_over_obj = check_bit(val, 7);
+        let y_flip = check_bit(val, 6);
+        let x_flip = check_bit(val, 5);
+        let palette = check_bit(val, 4);
+        let vram_bank = check_bit(val, 3);
+        let cpalette = val & 0x07;
+        Self {
+            bg_window_over_obj,
+            y_flip,
+            x_flip,
+            palette,
+            vram_bank,
+            cpalette,
+            ..Self::default()
+        }
     }
 }
 
@@ -637,6 +666,8 @@ impl Default for OAM {
             x_flip: false,
             y_flip: false,
             palette: false,
+            cpalette: 0,
+            vram_bank: false,
             priority: 40,
         }
     }
@@ -1051,7 +1082,8 @@ impl PPU {
             let x = self.mmu.borrow().get(oam_address + 1);
             let tile_index = self.mmu.borrow().get(oam_address + 2);
             let flags = self.mmu.borrow().get(oam_address + 3);
-            let oam = OAM::new(y, x, tile_index, flags, index);
+            let mut oam = OAM::from(flags);
+            oam.set(y, x, tile_index, index);
             if oam.is_scaned(ly, obj_size) {
                 result.push(oam);
             }
