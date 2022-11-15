@@ -277,10 +277,12 @@ impl Fetcher for FetcherBg {
 }
 
 struct FetcherWindow {
+    mode: GameBoyMode,
     scan_x: u8,
     wx: u8,
     wy: u8,
     window_internal_line_index: u8,
+    bg_map_attr: BGMapAttr,
     cycles: u16,
     mmu: Rc<RefCell<Mmu>>,
     status: FetcherStatus,
@@ -296,11 +298,14 @@ impl FetcherWindow {
 }
 impl Fetcher for FetcherWindow {
     fn new(mmu: Rc<RefCell<Mmu>>, scan_x: u8, _: u8) -> Self {
+        let mode = mmu.borrow().mode;
         Self {
+            mode,
             scan_x,
             wx: 0,
             wy: 0,
             window_internal_line_index: 0,
+            bg_map_attr: BGMapAttr::from(0),
             mmu,
             cycles: 0,
             status: GetTile,
@@ -345,29 +350,75 @@ impl Fetcher for FetcherWindow {
         let bg_map_x = (self.scan_x as u16 + 7 - self.wx as u16) % 256 / 8;
         let bg_map_y = self.window_internal_line_index as u16 / 8;
         let bg_map_index = bg_map_x + bg_map_y * 32;
-        let bg_map_byte = self.mmu.borrow().get(window_map_start + bg_map_index);
+        let bg_map_byte = self
+            .mmu
+            .borrow()
+            .ppu
+            .vram
+            .get_by_bank(window_map_start + bg_map_index, false);
+
         let tile_index: u16 = if bg_window_tile_data_area {
             0x8000 + bg_map_byte as u16 * 8 * 2
         } else {
             (0x9000 as i32 + (bg_map_byte as i8) as i32 * 8 * 2) as u16
         };
+        if self.mode == GameBoyMode::GBC {
+            let bg_map_attr_val = self
+                .mmu
+                .borrow()
+                .ppu
+                .vram
+                .get_by_bank(window_map_start + bg_map_index, true);
+            self.bg_map_attr = BGMapAttr::from(bg_map_attr_val);
+        }
         tile_index
     }
     fn get_tile_data_low(&self) -> u8 {
         let tile_index = self.tile_index;
-        let tile_pixel_y = self.window_internal_line_index as u16 % 8;
-        let tile_byte_low = self.mmu.borrow().get(tile_index + tile_pixel_y * 2);
-        tile_byte_low
+        let mut tile_pixel_y = self.window_internal_line_index as u16 % 8;
+        if self.mode == GameBoyMode::GBC {
+            if self.bg_map_attr.y_flip {
+                tile_pixel_y = (8 - 1) - tile_pixel_y;
+            }
+            self.mmu
+                .borrow()
+                .ppu
+                .vram
+                .get_by_bank(tile_index + tile_pixel_y * 2, self.bg_map_attr.vram_bank)
+        } else {
+            self.mmu
+                .borrow()
+                .ppu
+                .vram
+                .get_by_bank(tile_index + tile_pixel_y * 2, false)
+        }
     }
     fn get_tile_data_high(&self) -> u8 {
         let tile_index = self.tile_index;
-        let tile_pixel_y = self.window_internal_line_index as u16 % 8;
-        let tile_byte_high = self.mmu.borrow().get(tile_index + tile_pixel_y * 2 + 1);
-        tile_byte_high
+        let mut tile_pixel_y = self.window_internal_line_index as u16 % 8;
+        if self.mode == GameBoyMode::GBC {
+            if self.bg_map_attr.y_flip {
+                tile_pixel_y = (8 - 1) - tile_pixel_y;
+            }
+            self.mmu.borrow().ppu.vram.get_by_bank(
+                tile_index + tile_pixel_y * 2 + 1,
+                self.bg_map_attr.vram_bank,
+            )
+        } else {
+            self.mmu
+                .borrow()
+                .ppu
+                .vram
+                .get_by_bank(tile_index + tile_pixel_y * 2 + 1, false)
+        }
     }
     fn get_buffer(&mut self) -> Vec<Pixel> {
         let mut result = Vec::new();
-        let get_pixel_bit: Box<dyn Fn(u8) -> u8> = Box::new(|index: u8| 8 - index - 1);
+        let mut get_pixel_bit: Box<dyn Fn(u8) -> u8> = Box::new(|index: u8| 8 - index - 1);
+        if (self.mode == GameBoyMode::GBC) && self.bg_map_attr.x_flip {
+            get_pixel_bit = Box::new(|index: u8| index);
+        }
+        let bg_window_enable = self.mmu.borrow().ppu.lcdc.bg_window_enable;
         let buffer_index_start = (self.scan_x as u16 + 7 - self.wx as u16) % 8;
         for buffer_index in buffer_index_start..8 {
             let pixel_bit = get_pixel_bit(buffer_index as u8);
@@ -375,24 +426,39 @@ impl Fetcher for FetcherWindow {
             let pixel_high = check_bit(self.tile_data_high, pixel_bit as u8);
             let pvalue = (pixel_low as u8) | ((pixel_high as u8) << 1);
             let pcolor = self.get_color_index(pvalue);
-            result.push(Pixel {
-                ptype: Window,
-                pvalue,
-                pcolor,
-                ..Pixel::default()
-            });
+            let pixel = if !bg_window_enable && self.mode == GameBoyMode::GB {
+                Pixel {
+                    ptype: Window,
+                    pvalue: 0,
+                    pcolor: 0,
+                    ..Pixel::default()
+                }
+            } else {
+                Pixel {
+                    ptype: Window,
+                    pvalue,
+                    pcolor,
+                    ..Pixel::default()
+                }
+            };
+            result.push(pixel);
         }
         result
     }
     fn get_color_index(&self, pvalue: u8) -> u8 {
-        let palette = self.mmu.borrow().ppu.bgp;
-        match pvalue {
-            0 => palette & 0b11,
-            1 => (palette & 0b1100) >> 2,
-            2 => (palette & 0b110000) >> 4,
-            3 => (palette & 0b11000000) >> 6,
-            _ => {
-                panic!("color index is out of range {}", pvalue);
+        if self.mode == GameBoyMode::GBC {
+            let bg_palette = self.bg_map_attr.bg_palette;
+            bg_palette * 4 * 2 + pvalue * 2
+        } else {
+            let palette = self.mmu.borrow().ppu.bgp;
+            match pvalue {
+                0 => palette & 0b11,
+                1 => (palette & 0b1100) >> 2,
+                2 => (palette & 0b110000) >> 4,
+                3 => (palette & 0b11000000) >> 6,
+                _ => {
+                    panic!("color index is out of range {}", pvalue);
+                }
             }
         }
     }
@@ -956,7 +1022,7 @@ impl PPU {
             let blue = ((color & 0x7C00) >> 10) as u32;
             let green = ((color & 0x03E0) >> 5) as u32;
             let red = (color & 0x001F) as u32;
-            
+
             let hex_red = (red << 3) | (red >> 2);
             let hex_green = (green << 3) | (green >> 2);
             let hex_blue = (blue << 3) | (blue >> 2);
