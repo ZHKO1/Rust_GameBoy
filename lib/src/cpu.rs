@@ -958,8 +958,8 @@ impl Cpu {
                     0x12 => self.reg.get_de(),
                     0x77 => self.reg.get_hl(),
                     0xEA => self.imm_word(),
-                    0xE0 => (0xFF00 | (self.imm() as u16)),
-                    0xE2 => (0xFF00 | (self.reg.c as u16)),
+                    0xE0 => 0xFF00 | (self.imm() as u16),
+                    0xE2 => 0xFF00 | (self.reg.c as u16),
                     _ => {
                         panic!("LD (address), A. But address?")
                     }

@@ -1,4 +1,4 @@
-use crate::cartridge::{from_vecu8, Cartridge, Stable};
+use crate::cartridge::{Cartridge, Stable};
 use crate::gameboy_mode::GameBoyMode;
 use crate::interrupt::Interrupt;
 use crate::joypad::JoyPad;

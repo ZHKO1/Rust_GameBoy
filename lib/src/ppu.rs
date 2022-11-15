@@ -200,7 +200,6 @@ impl Fetcher for FetcherBg {
 
 struct FetcherWindow {
     scan_x: u8,
-    scan_y: u8,
     wx: u8,
     wy: u8,
     window_internal_line_index: u8,
@@ -218,10 +217,9 @@ impl FetcherWindow {
     }
 }
 impl Fetcher for FetcherWindow {
-    fn new(mmu: Rc<RefCell<Mmu>>, scan_x: u8, scan_y: u8) -> Self {
+    fn new(mmu: Rc<RefCell<Mmu>>, scan_x: u8, _: u8) -> Self {
         Self {
             scan_x,
-            scan_y,
             wx: 0,
             wy: 0,
             window_internal_line_index: 0,
