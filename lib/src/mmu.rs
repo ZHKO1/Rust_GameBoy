@@ -253,7 +253,7 @@ impl Mmu {
             let s_v = self.get(s);
             self.set(d, s_v);
         }
-        self.set(0xFF55, 0xFF);
+        self.hdma.set(0xFF55, 0xFF);
     }
     pub fn bind_event(&mut self, index: u16, value: u8) {
         match index {
