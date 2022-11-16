@@ -194,7 +194,7 @@ mod test {
             assert_eq!(buffer, expect);
 
             fn get_expect() -> String {
-                let path = Path::new("tests/dmg_acid2/frame_buffer");
+                let path = Path::new("tests/dmg_acid2/expect");
                 let display = path.display();
                 let mut file = match File::open(&path) {
                     Err(why) => panic!("File.open {display} Err:{}", why),
