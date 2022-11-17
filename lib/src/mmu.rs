@@ -244,10 +244,7 @@ impl Mmu {
     }
     fn hdma(&mut self) {
         let (source, destination, length) = self.hdma.get_source_destination_length();
-        if source > destination {
-            return;
-        }
-        for index in 0x0000..=length {
+        for index in 0x0000..length {
             let s = source + index;
             let d = destination + index;
             let s_v = self.get(s);
