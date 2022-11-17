@@ -148,6 +148,7 @@ pub struct Cpu {
     is_halted: bool,
     reg: Registers,
     mmu: Rc<RefCell<Mmu>>,
+    step_flip: bool,
 }
 
 impl Cpu {
@@ -163,6 +164,7 @@ impl Cpu {
             ime: false,
             ime_next: None,
             is_halted: false,
+            step_flip: false,
         };
         if skip_bios {
             cpu.skip_bios();
@@ -247,15 +249,23 @@ impl Cpu {
         };
         cycles
     }
+    pub fn flip(&mut self) -> bool {
+        let r = self.step_flip;
+        if r {
+            self.step_flip = false;
+        }
+        r
+    }
     pub fn trick(&mut self) {
         self.trick_cpu();
-        if self.mode == GameBoyMode::GBC && self.mmu.borrow().speed.current_speed {
-            self.trick_cpu();
-        }
     }
     pub fn trick_cpu(&mut self) {
         if self.cycles == 0 {
+            self.step_flip = true;
             self.cur_opcode_cycles = self.step();
+            if self.mode == GameBoyMode::GBC && self.mmu.borrow().speed.current_speed {
+                self.cur_opcode_cycles = self.cur_opcode_cycles / 2;
+            }
         }
         if self.cycles == self.cur_opcode_cycles - 1 {
             self.cycles = 0;
@@ -1442,7 +1452,7 @@ impl Cpu {
             0xD9 => {
                 let d16 = self.stack_pop();
                 self.reg.pc = d16;
-                self.ime = true;
+                self.ime_next = Some(true);
             }
             // DI
             0xF3 => {

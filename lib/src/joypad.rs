@@ -31,7 +31,9 @@ impl JoyPad {
     pub fn input(&mut self, key: JoyPadKey, is_pressed: bool) {
         if is_pressed {
             self.matrix &= !(key as u8);
-            self.interrupt.borrow_mut().set_flag(InterruptFlag::Joypad);
+            if self.select & 0x30 > 0 {
+              self.interrupt.borrow_mut().set_flag(InterruptFlag::Joypad);
+            }
         } else {
             self.matrix |= key as u8;
         }
@@ -51,6 +53,6 @@ impl Memory for JoyPad {
     }
     fn set(&mut self, index: u16, value: u8) {
         assert_eq!(index, 0xFF00);
-        self.select = value;
+        self.select = value & 0x30;
     }
 }
