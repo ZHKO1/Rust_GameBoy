@@ -152,7 +152,7 @@ async function get_file(path) {
 }
 
 async function init() {
-  let rom_promise = await get_file(`assets/elden ring gb v1.0.gb`);
+  let rom_promise = await get_file(`assets/pokemon_gold.gbc`);
   await start_game(rom_promise);
 }
 
