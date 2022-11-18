@@ -57,9 +57,9 @@ class Emulator {
         const green = frameBuffer[source_idx + 1];
         const blue = frameBuffer[source_idx + 2];
         const dest_idx = y * this.lcd_width * 4 + x * 4;
-        data[dest_idx] = red;
+        data[dest_idx] = blue;
         data[dest_idx + 1] = green;
-        data[dest_idx + 2] = blue;
+        data[dest_idx + 2] = red;
         data[dest_idx + 3] = 255; // alpha
         // console.log(`${red}${green}${blue}`);
       }
@@ -122,7 +122,7 @@ async function get_file(path) {
 }
 
 async function init() {
-  let bios_promise = get_file(`assets/DMG_ROM.bin`);
+  let bios_promise = Promise.resolve([]); // get_file(`assets/DMG_ROM.bin`);
   let rom_promise = get_file(`assets/elden ring gb v1.0.gb`);
   let result = await Promise.all([bios_promise, rom_promise]);
   emulator.start(result[0], result[1]);
@@ -134,7 +134,7 @@ let start = document.querySelector(".webicon");
 start.addEventListener("click", (event) => {
   let romPicker = document.getElementById("rompicker");
   romPicker.addEventListener("change", async (event) => {
-    let bios = await get_file(`assets/DMG_ROM.bin`);
+    let bios = await Promise.resolve([]);
     const romFile = romPicker.files[0];
     let rom = await romFile.arrayBuffer();
     emulator.start(bios, rom);
