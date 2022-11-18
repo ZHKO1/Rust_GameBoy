@@ -1,34 +1,63 @@
-import { Gameboy, JoyPadKey } from "../pkg/rust_gameboy_wasm.js";
+import { GameBoy, JoyPadKey } from "../pkg/rust_gameboy_wasm.js";
 import { memory } from '../pkg/rust_gameboy_wasm_bg';
 
 class Emulator {
   constructor() {
-    this.lcd_width = Gameboy.lcd_width();
-    this.lcd_height = Gameboy.lcd_height();
+    this.lcd_width = GameBoy.lcd_width();
+    this.lcd_height = GameBoy.lcd_height();
     this.gameboy = null;
     this.running = false;
+    this.gbc = false;
 
     this.canvas = document.getElementById("game-of-life-canvas");
     this.ctx = this.canvas.getContext("2d");
-  }
-
-  init(biosBuffer, romBuffer) {
-    const biosData = new Uint8Array(biosBuffer);
-    const romData = new Uint8Array(romBuffer);
 
     try {
-      this.gameboy = new Gameboy(biosData, romData);
+      this.gameboy = new GameBoy();
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
+  }
+
+
+  start() {
+    this.gameboy.start();
+    this.run();
+  }
+
+  load_cartridge(romBuffer) {
+    const rom = new Uint8Array(romBuffer);
+    try {
+      this.gameboy.load_cartridge(rom);
     } catch (e) {
       console.error(e);
       throw e;
     }
 
-    console.log("Gameboy loaded!");
+    console.log("load_cartridge!");
   }
 
-  start(biosBuffer, romBuffer) {
-    this.init(biosBuffer, romBuffer);
-    this.run();
+  is_gbc() {
+    try {
+      this.gbc = this.gameboy.is_gbc();
+      return this.gbc
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
+  }
+
+  load_bios(biosBuffer) {
+    const biosData = new Uint8Array(biosBuffer);
+    try {
+      this.gameboy.load_bios(biosData);
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
+
+    console.log("load_bios!");
   }
 
   run() {
@@ -61,6 +90,7 @@ class Emulator {
         data[dest_idx + 1] = green;
         data[dest_idx + 2] = red;
         data[dest_idx + 3] = 255; // alpha
+
         // console.log(`${red}${green}${blue}`);
       }
     }
@@ -122,10 +152,21 @@ async function get_file(path) {
 }
 
 async function init() {
-  let bios_promise = Promise.resolve([]); // get_file(`assets/DMG_ROM.bin`);
-  let rom_promise = get_file(`assets/elden ring gb v1.0.gb`);
-  let result = await Promise.all([bios_promise, rom_promise]);
-  emulator.start(result[0], result[1]);
+  let rom_promise = await get_file(`assets/elden ring gb v1.0.gb`);
+  await start_game(rom_promise);
+}
+
+async function start_game(rom) {
+  rom = await Promise.resolve(rom);
+  emulator.load_cartridge(rom);
+  let bios;
+  if (emulator.is_gbc()) {
+    bios = [];
+  } else {
+    bios = await get_file(`assets/DMG_ROM.bin`);
+  }
+  emulator.load_bios(bios);
+  emulator.start();
 }
 
 init();
@@ -134,10 +175,9 @@ let start = document.querySelector(".webicon");
 start.addEventListener("click", (event) => {
   let romPicker = document.getElementById("rompicker");
   romPicker.addEventListener("change", async (event) => {
-    let bios = await Promise.resolve([]);
     const romFile = romPicker.files[0];
-    let rom = await romFile.arrayBuffer();
-    emulator.start(bios, rom);
+    let rom_promise = await romFile.arrayBuffer();
+    await start_game(rom_promise);
   });
   romPicker.click();
 });

@@ -1,5 +1,7 @@
 mod utils;
-use rust_gameboy_core::gameboy::GameBoy as Gameboy_;
+use std::io::Read;
+
+use rust_gameboy_core::gameboy::GameBoy as GameBoy_;
 use rust_gameboy_core::gameboy::{HEIGHT, WIDTH};
 use rust_gameboy_core::joypad::JoyPadKey as JoyPadKey_;
 use wasm_bindgen::prelude::*;
@@ -44,28 +46,58 @@ impl From<JoyPadKey> for JoyPadKey_ {
 }
 
 #[wasm_bindgen]
-pub struct Gameboy {
-    inner: Gameboy_,
+pub struct GameBoy {
+    bios: Vec<u8>,
+    rom: Vec<u8>,
+    inner: Option<GameBoy_>,
 }
 
 #[wasm_bindgen]
-impl Gameboy {
+impl GameBoy {
     #[wasm_bindgen(constructor)]
-    pub fn new(bios: Vec<u8>, rom: Vec<u8>) -> Result<Gameboy, JsValue> {
+    pub fn new() -> Result<GameBoy, JsValue> {
         utils::set_panic_hook();
-        let inner = Gameboy_::new(bios, rom);
-        Ok(Self { inner })
+        Ok(Self {
+            bios: vec![],
+            rom: vec![],
+            inner: None,
+        })
+    }
+
+    pub fn load_cartridge(&mut self, rom: Vec<u8>) {
+        self.rom = rom;
+    }
+
+    pub fn load_bios(&mut self, bios: Vec<u8>) {
+        self.bios = bios;
+    }
+
+    pub fn start(&mut self) {
+        let cartridge = GameBoy_::get_cartridge(self.rom.clone());
+        let inner = GameBoy_::new(self.bios.clone(), cartridge);
+        self.inner = Some(inner);
     }
 
     pub fn frame(&mut self) -> *const u32 {
-        while !self.inner.trick() {}
-        let frame_buffer = self.inner.get_frame_buffer();
-        frame_buffer.as_ptr()
+        if let Some(inner) = self.inner.as_mut() {
+            while !inner.trick() {}
+            let frame_buffer = inner.get_frame_buffer();
+            frame_buffer.as_ptr()
+        } else {
+            panic!("Please execte gameboy.start().")
+        }
+    }
+
+    pub fn is_gbc(&mut self) -> bool {
+        let cartridge = GameBoy_::get_cartridge(self.rom.clone());
+        cartridge.gbc_flag()
     }
 
     pub fn input(&mut self, key: JoyPadKey, is_pressed: bool) {
         let key_ = JoyPadKey_::from(key);
-        self.inner.input(key_, is_pressed)
+        if let Some(inner) = self.inner.as_mut() {
+            inner.input(key_, is_pressed);
+        }
     }
 
     pub fn lcd_width() -> usize {
