@@ -11,7 +11,8 @@ mod test {
                     let rom_path = format!("{}{}{}{}", "tests/gb-test-roms/", $path, $game, ".gb");
                     let bios = read_rom(bios_path).unwrap_or(vec![]);
                     let rom = read_rom(rom_path).unwrap();
-                    let mut gameboy = GameBoy::new(bios, rom);
+                    let cartridge = GameBoy::get_cartridge(rom);
+                    let mut gameboy = GameBoy::new(bios, cartridge);
                     let expect = format!("{}", $expect);
                     let expect = expect.as_bytes().to_vec();
                     let start = SystemTime::now()
@@ -85,7 +86,8 @@ mod test {
                     let rom_path = format!("{}{}{}{}", "tests/mts/", $path, $game, ".gb");
                     let bios = read_rom(bios_path).unwrap_or(vec![]);
                     let rom = read_rom(rom_path).unwrap();
-                    let mut gameboy = GameBoy::new(bios, rom);
+                    let cartridge = GameBoy::get_cartridge(rom);
+                    let mut gameboy = GameBoy::new(bios, cartridge);
                     let expect = vec![3, 5, 8, 13, 21, 34];
                     let start = SystemTime::now()
                         .duration_since(SystemTime::UNIX_EPOCH)
@@ -165,7 +167,8 @@ mod test {
                     let rom_path = format!("tests/{}/{}", $path, $game);
                     let bios = read_rom(bios_path).unwrap_or(vec![]);
                     let rom = read_rom(rom_path).unwrap();
-                    let mut gameboy = GameBoy::new(bios, rom);
+                    let cartridge = GameBoy::get_cartridge(rom);
+                    let mut gameboy = GameBoy::new(bios, cartridge);
                     let start = SystemTime::now()
                         .duration_since(SystemTime::UNIX_EPOCH)
                         .unwrap()

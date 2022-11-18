@@ -14,7 +14,8 @@ fn main() {
     // let rom_path = "tests/red_ue.gb";
     let bios = read_rom(bios_path).unwrap_or(vec![]);
     let rom = read_rom(rom_path).unwrap();
-    let mut gameboy = GameBoy::new(bios, rom);
+    let cartridge = GameBoy::get_cartridge(rom);
+    let mut gameboy = GameBoy::new(bios, cartridge);
     let ram_path = PathBuf::from(rom_path).with_extension("sav");
     let ram_path = ram_path.to_str().unwrap();
     let ram_result = read_rom(ram_path);
@@ -68,6 +69,14 @@ fn main() {
         }
         let is_refresh = gameboy.trick();
         if is_refresh {
+            let frame_buffer = gameboy.get_frame_buffer();
+            buffer.clone_from_slice(frame_buffer);
+            display.update_with_buffer(&mut buffer);
+            // frames += 1;
+
+            if !gameboy.flip() {
+                continue;
+            }
             for (rk, vk) in &keys {
                 if display.window.is_key_down(*rk) {
                     gameboy.input(vk.clone(), true);
@@ -75,10 +84,6 @@ fn main() {
                     gameboy.input(vk.clone(), false);
                 }
             }
-            let frame_buffer = gameboy.get_frame_buffer();
-            buffer.clone_from_slice(frame_buffer);
-            display.update_with_buffer(&mut buffer);
-            // frames += 1;
         }
     }
 }

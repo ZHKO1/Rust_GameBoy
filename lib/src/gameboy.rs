@@ -1,4 +1,4 @@
-use crate::cartridge::{from_vecu8, Stable};
+use crate::cartridge::{from_vecu8, Cartridge, Stable};
 use crate::cpu::{Cpu, Timer};
 use crate::gameboy_mode::GameBoyMode;
 use crate::joypad::JoyPadKey;
@@ -31,7 +31,7 @@ pub struct GameBoy {
 }
 
 impl GameBoy {
-    pub fn new(bios: Vec<u8>, rom: Vec<u8>) -> Self {
+    pub fn new(bios: Vec<u8>, cartridge: Box<dyn Cartridge>) -> Self {
         /*
         CombinedLogger::init(vec![
               TermLogger::new(
@@ -49,7 +49,6 @@ impl GameBoy {
           .unwrap();
           */
         let skip_bios = bios.is_empty();
-        let cartridge = from_vecu8(rom);
         let gbc_flag = cartridge.gbc_flag();
         let mode = if gbc_flag {
             GameBoyMode::GBC
@@ -83,8 +82,11 @@ impl GameBoy {
     pub fn input(&mut self, key: JoyPadKey, is_pressed: bool) {
         self.mmu.borrow_mut().joypad.input(key, is_pressed);
     }
-    pub fn is_cartridge_gbc(&self) -> bool {
-        self.mmu.borrow().cartridge.gbc_flag()
+    pub fn is_gbc(cartridge: Box<dyn Cartridge>) -> bool {
+        cartridge.gbc_flag()
+    }
+    pub fn get_cartridge(rom: Vec<u8>) -> Box<dyn Cartridge> {
+        from_vecu8(rom)
     }
 }
 
