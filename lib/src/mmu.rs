@@ -181,7 +181,7 @@ impl Memory for Speed {
 
 pub struct Mmu {
     pub mode: GameBoyMode,
-    boot: [u8; 0x100],
+    boot: Vec<u8>,
     pub cartridge: Box<dyn Cartridge>,
     pub joypad: JoyPad,
     pub ppu: PpuMmu,
@@ -196,10 +196,10 @@ pub struct Mmu {
 impl Mmu {
     pub fn new(mode: GameBoyMode, bios: Vec<u8>, cartridge: Box<dyn Cartridge>) -> Self {
         let other = MemoryBlock::new();
-        let mut boot = [0; 0x100];
+        let mut boot = vec![];
         let skip_boot = bios.is_empty();
         if !skip_boot {
-            boot.copy_from_slice(&bios[..0x100]);
+            boot.clone_from(&bios);
         }
         let interrupt = Interrupt::new();
         let rc_refcell_interrupt = Rc::new(RefCell::new(interrupt));
@@ -282,7 +282,15 @@ impl Memory for Mmu {
                     self.cartridge.get(index)
                 }
             }
-            0x0100..=0x7FFF => self.cartridge.get(index),
+            0x0100..=0x01FF => self.cartridge.get(index),
+            0x0200..=0x08FF => {
+                if self.is_boot() && self.boot.get(index as usize).is_some() {
+                    self.boot[index as usize]
+                } else {
+                    self.cartridge.get(index)
+                }
+            }
+            0x0900..=0x7FFF => self.cartridge.get(index),
             0x8000..=0x9FFF => self.ppu.get(index),
             0xA000..=0xBFFF => self.cartridge.get(index),
             0xFE00..=0xFE9F => self.ppu.get(index),

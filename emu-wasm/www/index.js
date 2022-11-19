@@ -161,7 +161,7 @@ async function start_game(rom) {
   emulator.load_cartridge(rom);
   let bios;
   if (emulator.is_gbc()) {
-    bios = [];
+    bios = await get_file(`assets/gbc_bios.bin`);;
   } else {
     bios = await get_file(`assets/DMG_ROM.bin`);
   }

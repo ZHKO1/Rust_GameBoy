@@ -1000,11 +1000,17 @@ pub struct PPU {
     ly_buffer: Vec<u32>,
     lcd_enable: bool,
     pub frame_buffer: [u32; WIDTH * HEIGHT],
+    init_color: u32,
 }
 impl PPU {
     pub fn new(mmu: Rc<RefCell<Mmu>>) -> Self {
         let mode = mmu.borrow().mode;
         let fifo = FIFO::new(mmu.clone());
+        let init_color = if mode == GameBoyMode::GBC {
+            0xFFFFFF
+        } else {
+            Color::WHITE as u32
+        };
         let mut ppu = PPU {
             mode,
             cycles: 0,
@@ -1012,7 +1018,8 @@ impl PPU {
             fifo,
             lcd_enable: true,
             ly_buffer: Vec::with_capacity(WIDTH),
-            frame_buffer: [Color::WHITE as u32; WIDTH * HEIGHT],
+            frame_buffer: [init_color as u32; WIDTH * HEIGHT],
+            init_color,
         };
         ppu.set_mode(OAMScan);
         ppu
@@ -1026,7 +1033,7 @@ impl PPU {
             }
             self.cycles = 0;
             self.ly_buffer = Vec::with_capacity(WIDTH);
-            self.frame_buffer = [Color::WHITE as u32; WIDTH * HEIGHT];
+            self.frame_buffer = [self.init_color; WIDTH * HEIGHT];
             self.fifo = FIFO::new(self.mmu.clone());
             self.mmu.borrow_mut().ppu.reset_ly();
             self.mmu.borrow_mut().ppu.stat.mode_flag = HBlank;
