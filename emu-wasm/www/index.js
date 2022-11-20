@@ -152,6 +152,7 @@ async function get_file(path) {
 }
 
 async function init() {
+  load_paintWorklet();
   let rom_promise = await get_file(`assets/pokemon_gold.gbc`);
   await start_game(rom_promise);
 }
@@ -160,13 +161,61 @@ async function start_game(rom) {
   rom = await Promise.resolve(rom);
   emulator.load_cartridge(rom);
   let bios;
+  let type;
   if (emulator.is_gbc()) {
-    bios = await get_file(`assets/gbc_bios.bin`);;
+    bios = await get_file(`assets/gbc_bios.bin`);
+    type = "GBC";
   } else {
     bios = await get_file(`assets/DMG_ROM.bin`);
+    type = "GB";
   }
   emulator.load_bios(bios);
   emulator.start();
+  switch_background(type);
+}
+
+async function load_paintWorklet() {
+  if ("paintWorklet" in CSS) {
+    return CSS.paintWorklet.addModule('paintworklet.js')
+  }
+}
+
+async function switch_background(type) {
+  let ele = document.querySelector('.container');
+  ele.classList.add("animating");
+  switch (type) {
+    case "GBC":
+      ele.classList.add("topurple");
+      break;
+    case "GB":
+      ele.classList.add("togreen");
+      break;
+  }
+  let start = performance.now();
+  requestAnimationFrame(function raf(now) {
+    const count = Math.floor(now - start);
+    ele.style.cssText = `--animation-tick: ${count};`;
+    if (count > 1000) {
+      ele.classList.remove("animating");
+      ele.style.cssText = `--animation-tick: 0`;
+      ele.classList.add("animating");
+      ele.classList.remove("purple");
+      ele.classList.remove("green");
+      ele.classList.remove("topurple");
+      ele.classList.remove("togreen");      
+      switch (type) {
+        case "GBC":
+          ele.classList.add("purple");
+          break;
+        case "GB":
+          ele.classList.add("green");
+          break;
+      }
+      return;
+    } else {
+      requestAnimationFrame(raf);
+    }
+  });
 }
 
 init();
