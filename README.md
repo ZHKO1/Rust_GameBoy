@@ -1,5 +1,6 @@
-# Rust-gameboy
-A gameboy emulator written in Rust.  
+# Rust-GameBoy
+A GameBoy emulator written in Rust.
+Support GameBoy and GameBoyColor
 Try it here: https://rust-gameboy.netlify.app/
 
 # Play
