@@ -182,7 +182,6 @@ async function load_paintWorklet() {
 
 async function switch_background(type) {
   let ele = document.querySelector('.container');
-  ele.classList.add("animating");
   switch (type) {
     case "GBC":
       ele.classList.add("topurple");
@@ -191,6 +190,7 @@ async function switch_background(type) {
       ele.classList.add("togreen");
       break;
   }
+  ele.classList.add("animating");
   let start = performance.now();
   requestAnimationFrame(function raf(now) {
     const count = Math.floor(now - start);
@@ -198,16 +198,15 @@ async function switch_background(type) {
     if (count > 1000) {
       ele.classList.remove("animating");
       ele.style.cssText = `--animation-tick: 0`;
-      ele.classList.add("animating");
-      ele.classList.remove("purple");
-      ele.classList.remove("green");
-      ele.classList.remove("topurple");
-      ele.classList.remove("togreen");      
       switch (type) {
         case "GBC":
+          ele.classList.remove("green");
+          ele.classList.remove("topurple");
           ele.classList.add("purple");
           break;
         case "GB":
+          ele.classList.remove("togreen");
+          ele.classList.remove("purple");
           ele.classList.add("green");
           break;
       }
