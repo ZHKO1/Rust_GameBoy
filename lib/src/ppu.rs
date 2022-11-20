@@ -1387,7 +1387,7 @@ impl BCP {
         Self {
             auto_increment: false,
             address: 0,
-            memory: [0; 64],
+            memory: [0xFF; 64],
         }
     }
 }
@@ -1432,7 +1432,7 @@ impl OCP {
         Self {
             auto_increment: false,
             address: 0,
-            memory: [0; 64],
+            memory: [0xFF; 64],
         }
     }
 }
