@@ -113,6 +113,23 @@ mod test {
                 }
             };
         }
+
+        mod acceptance {
+            mod bits {
+                test!(mem_oam, "acceptance/bits/", "mem_oam");
+                test!(reg_f, "acceptance/bits/", "reg_f");
+            }
+
+            mod instr {
+                test!(daa, "acceptance/instr/", "daa");
+            }
+
+            mod oam_dma {
+                test!(basic, "acceptance/oam_dma/", "basic");
+                test!(reg_read, "acceptance/oam_dma/", "reg_read");
+            }
+        }
+
         mod emulator_only {
             mod mbc1 {
                 test!(bits_bank1, "emulator-only/mbc1/", "bits_bank1");
