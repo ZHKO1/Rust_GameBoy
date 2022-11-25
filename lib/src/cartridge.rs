@@ -96,7 +96,7 @@ pub trait Stable {
     fn load_sav(&mut self, _ram: Vec<u8>) {}
 }
 
-struct RomOnly {
+pub struct RomOnly {
     rom: Vec<u8>,
 }
 impl RomOnly {
@@ -111,6 +111,11 @@ impl Memory for RomOnly {
     fn set(&mut self, _: u16, _: u8) {}
 }
 impl Stable for RomOnly {}
+impl Default for RomOnly {
+    fn default() -> Self {
+        Self { rom: vec![] }
+    }
+}
 
 enum MBC1Mode {
     Rom, //  16Mbit ROM/8KByte RAM

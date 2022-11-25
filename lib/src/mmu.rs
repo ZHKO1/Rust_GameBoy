@@ -1,10 +1,13 @@
-use crate::cartridge::{Cartridge, Stable};
+use crate::big_array::BigArray;
+use crate::cartridge::{Cartridge, RomOnly, Stable};
 use crate::gameboy_mode::GameBoyMode;
 use crate::joypad::JoyPad;
 use crate::memory::Memory;
 use crate::ppu::PpuMmu;
 
+#[derive(serde::Deserialize, serde::Serialize)]
 struct MemoryBlock {
+    #[serde(with = "BigArray")]
     memory: [u8; 0xFFFF - 0x8000 + 1],
     start: u16,
     end: u16,
@@ -37,6 +40,7 @@ impl Memory for MemoryBlock {
     }
 }
 
+#[derive(serde::Deserialize, serde::Serialize)]
 struct HDMA {
     source_high: u8,
     source_low: u8,
@@ -94,9 +98,10 @@ impl Memory for HDMA {
         }
     }
 }
-
+#[derive(serde::Deserialize, serde::Serialize)]
 struct WRAM {
     bank: u8,
+    #[serde(with = "BigArray")]
     memory: [u8; (0xDFFF - 0xD000 + 1) * 8],
 }
 impl WRAM {
@@ -142,6 +147,7 @@ impl Memory for WRAM {
     }
 }
 
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct Speed {
     pub current_speed: bool,
     prepare_switch: bool,
@@ -176,10 +182,23 @@ impl Memory for Speed {
     }
 }
 
+pub struct CartridgeProxy {
+    pub content: Box<dyn Cartridge>,
+}
+impl Default for CartridgeProxy {
+    fn default() -> Self {
+        let cartridge: RomOnly = Default::default();
+        let cartridge = Box::new(cartridge);
+        Self { content: cartridge }
+    }
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct Mmu {
     pub mode: GameBoyMode,
     boot: Vec<u8>,
-    pub cartridge: Box<dyn Cartridge>,
+    #[serde(skip)]
+    pub cartridge: CartridgeProxy,
     pub joypad: JoyPad,
     pub ppu: PpuMmu,
     wram: WRAM,
@@ -206,6 +225,7 @@ impl Mmu {
         let hdma = HDMA::new();
         let speed = Speed::new();
         let wram = WRAM::new();
+        let cartridge = CartridgeProxy { content: cartridge };
         let mut mmu = Self {
             mode,
             boot,
@@ -278,20 +298,20 @@ impl Memory for Mmu {
                 if self.is_boot() {
                     self.boot[index as usize]
                 } else {
-                    self.cartridge.get(index)
+                    self.cartridge.content.get(index)
                 }
             }
-            0x0100..=0x01FF => self.cartridge.get(index),
+            0x0100..=0x01FF => self.cartridge.content.get(index),
             0x0200..=0x08FF => {
                 if self.is_boot() && self.boot.get(index as usize).is_some() {
                     self.boot[index as usize]
                 } else {
-                    self.cartridge.get(index)
+                    self.cartridge.content.get(index)
                 }
             }
-            0x0900..=0x7FFF => self.cartridge.get(index),
+            0x0900..=0x7FFF => self.cartridge.content.get(index),
             0x8000..=0x9FFF => self.ppu.get(index),
-            0xA000..=0xBFFF => self.cartridge.get(index),
+            0xA000..=0xBFFF => self.cartridge.content.get(index),
             0xFE00..=0xFE9F => self.ppu.get(index),
             0xFF00 => self.joypad.get(index),
             0xFF0F => {
@@ -348,9 +368,9 @@ impl Memory for Mmu {
     }
     fn set(&mut self, index: u16, value: u8) {
         match index {
-            0x0000..=0x7FFF => self.cartridge.set(index, value),
+            0x0000..=0x7FFF => self.cartridge.content.set(index, value),
             0x8000..=0x9FFF => self.ppu.set(index, value),
-            0xA000..=0xBFFF => self.cartridge.set(index, value),
+            0xA000..=0xBFFF => self.cartridge.content.set(index, value),
             0xFE00..=0xFE9F => self.ppu.set(index, value),
             0xFF00 => self.joypad.set(index, value),
             0xFF0F => {
@@ -403,9 +423,39 @@ impl Memory for Mmu {
 
 impl Stable for Mmu {
     fn save_sav(&self) -> Vec<u8> {
-        self.cartridge.save_sav()
+        self.cartridge.content.save_sav()
     }
     fn load_sav(&mut self, ram: Vec<u8>) {
-        self.cartridge.load_sav(ram);
+        self.cartridge.content.load_sav(ram);
+    }
+}
+
+impl Default for Mmu {
+    fn default() -> Self {
+        let other = MemoryBlock::new();
+        let boot = vec![];
+        let mode = GameBoyMode::GB;
+        let joypad = JoyPad::new();
+        let ppu = PpuMmu::new(mode);
+        let hdma = HDMA::new();
+        let speed = Speed::new();
+        let wram = WRAM::new();
+        let cartridge: RomOnly = Default::default();
+        let cartridge = Box::new(cartridge);
+        let cartridge = CartridgeProxy { content: cartridge };
+        Self {
+            mode,
+            boot,
+            cartridge,
+            other,
+            joypad,
+            ppu,
+            wram,
+            hdma,
+            speed,
+            timer_flag: false,
+            serial_flag: false,
+            log_msg: vec![],
+        }
     }
 }

@@ -53,6 +53,7 @@ pub enum Flag {
     C = 0b0001_0000,
 }
 
+#[derive(serde::Deserialize, serde::Serialize)]
 struct Registers {
     a: u8,
     b: u8,
@@ -139,6 +140,7 @@ impl Registers {
     }
 }
 
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct Cpu {
     mode: GameBoyMode,
     cycles: u32,
@@ -147,7 +149,8 @@ pub struct Cpu {
     ime_next: Option<bool>,
     is_halted: bool,
     reg: Registers,
-    mmu: Rc<RefCell<Mmu>>,
+    #[serde(skip)]
+    pub mmu: Rc<RefCell<Mmu>>,
     step_flip: bool,
 }
 
@@ -1705,17 +1708,20 @@ impl Cpu {
     }
 }
 
+#[derive(serde::Deserialize, serde::Serialize)]
 pub enum TimerClock {
     S0 = 1024,
     S1 = 16,
     S2 = 64,
     S3 = 256,
 }
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct Timer {
     mode: GameBoyMode,
     div_cycles: usize,
     tima_cycles: usize,
-    mmu: Rc<RefCell<Mmu>>,
+    #[serde(skip)]
+    pub mmu: Rc<RefCell<Mmu>>,
     cur_tac: TimerClock,
 }
 impl Timer {

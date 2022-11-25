@@ -11,7 +11,7 @@ pub enum JoyPadKey {
     Select = 0b0100_0000,
     Start = 0b1000_0000,
 }
-
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct JoyPad {
     matrix: u8,
     select: u8,

@@ -7,4 +7,5 @@ pub mod joypad;
 pub mod gameboy;
 pub mod util;
 pub mod gameboy_mode;
+mod big_array;
 mod test;

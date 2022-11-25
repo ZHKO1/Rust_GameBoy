@@ -2,10 +2,12 @@ use crate::cartridge::{from_vecu8, Cartridge, Stable};
 use crate::cpu::{Cpu, Timer};
 use crate::gameboy_mode::GameBoyMode;
 use crate::joypad::JoyPadKey;
-use crate::mmu::Mmu;
+use crate::mmu::{CartridgeProxy, Mmu};
 use crate::ppu::PPU;
 pub use crate::ppu::{HEIGHT, WIDTH};
+use std::ops::Deref;
 use std::{cell::RefCell, rc::Rc};
+use bincode::Error;
 /*
 use std::fs::File;
 use simplelog::*;
@@ -13,8 +15,17 @@ extern crate log;
 extern crate simplelog;
 */
 
+#[derive(Default)]
+pub struct GameBoyStatus {
+    other_status: Vec<u8>,
+    mmu_status: Vec<u8>,
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct GameBoy {
+    #[serde(skip)]
     pub mmu: Rc<RefCell<Mmu>>,
+    #[serde(skip)]
     ppu: PPU,
     cpu: Cpu,
     timer: Timer,
@@ -77,6 +88,34 @@ impl GameBoy {
     }
     pub fn get_cartridge(rom: Vec<u8>) -> Box<dyn Cartridge> {
         from_vecu8(rom)
+    }
+
+    pub fn load(
+        &self,
+        status: &GameBoyStatus,
+        cartridge: Box<dyn Cartridge>,
+    ) -> Result<Self, Error> {
+        let mut gameboy: Self = bincode::deserialize_from(status.other_status.as_slice())?;
+        let mut mmu: Mmu = bincode::deserialize_from(status.mmu_status.as_slice())?;
+        mmu.cartridge = CartridgeProxy { content: cartridge };
+        let rc_refcell_mmu = Rc::new(RefCell::new(mmu));
+        gameboy.mmu = rc_refcell_mmu.clone();
+        gameboy.cpu.mmu = rc_refcell_mmu.clone();
+        gameboy.ppu = PPU::new(rc_refcell_mmu.clone());
+        gameboy.timer.mmu = rc_refcell_mmu.clone();
+
+        Ok(gameboy)
+    }
+
+    pub fn save(&self) -> Result<GameBoyStatus, Error> {
+        let mut other_data = Vec::new();
+        bincode::serialize_into(&mut other_data, &self)?;
+        let mut mmu_data = Vec::new();
+        bincode::serialize_into(&mut mmu_data, self.mmu.borrow().deref())?;
+        Ok(GameBoyStatus {
+            other_status: other_data,
+            mmu_status: mmu_data,
+        })
     }
 }
 

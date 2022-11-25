@@ -6,6 +6,7 @@ use crate::ppu::PixelType::{Sprite, Window, BG};
 use crate::ppu::PpuStatus::{Drawing, HBlank, OAMScan, VBlank};
 use crate::util::check_bit;
 // use log::info;
+use crate::big_array::BigArray;
 use std::collections::VecDeque;
 use std::{cell::RefCell, rc::Rc};
 
@@ -983,7 +984,7 @@ impl FIFO {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, serde::Deserialize, serde::Serialize)]
 pub enum PpuStatus {
     OAMScan = 2,
     Drawing = 3,
@@ -994,7 +995,7 @@ pub struct PPU {
     mode: GameBoyMode,
     cycles: u32,
     fifo: FIFO,
-    mmu: Rc<RefCell<Mmu>>,
+    pub mmu: Rc<RefCell<Mmu>>,
     ly_buffer: Vec<u32>,
     lcd_enable: bool,
     pub frame_buffer: [u32; WIDTH * HEIGHT],
@@ -1009,7 +1010,7 @@ impl PPU {
         } else {
             Color::WHITE as u32
         };
-        let mut ppu = PPU {
+        Self {
             mode,
             cycles: 0,
             mmu,
@@ -1018,9 +1019,7 @@ impl PPU {
             ly_buffer: Vec::with_capacity(WIDTH),
             frame_buffer: [init_color as u32; WIDTH * HEIGHT],
             init_color,
-        };
-        ppu.set_mode(OAMScan);
-        ppu
+        }
     }
     pub fn trick(&mut self) -> bool {
         let lcd_enable = self.mmu.borrow().ppu.lcdc.lcd_ppu_enable;
@@ -1188,7 +1187,31 @@ impl PPU {
         self.mmu.borrow_mut().ppu.set_mode_interrupt();
     }
 }
+impl Default for PPU {
+    fn default() -> Self {
+        let mmu: Mmu = Default::default();
+        let mmu = Rc::new(RefCell::new(mmu));
+        let mode = mmu.borrow().mode;
+        let fifo = FIFO::new(mmu.clone());
+        let init_color = if mode == GameBoyMode::GBC {
+            0xFFFFFF
+        } else {
+            Color::WHITE as u32
+        };
+        Self {
+            mode,
+            cycles: 0,
+            mmu,
+            fifo,
+            lcd_enable: true,
+            ly_buffer: Vec::with_capacity(WIDTH),
+            frame_buffer: [init_color as u32; WIDTH * HEIGHT],
+            init_color,
+        }
+    }
+}
 
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct LCDC {
     pub lcd_ppu_enable: bool,
     pub window_tile_map_area: bool,
@@ -1259,6 +1282,7 @@ impl Memory for LCDC {
     }
 }
 
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct STAT {
     pub lyc_ly_interrupt: bool,
     pub mode2_interrupt: bool,
@@ -1316,9 +1340,11 @@ impl Memory for STAT {
     }
 }
 
+#[derive(serde::Deserialize, serde::Serialize)]
 struct VRAM {
     mode: GameBoyMode,
     bank: u8,
+    #[serde(with = "BigArray")]
     memory: [u8; (0x9FFF - 0x8000 + 1) * 2],
 }
 impl VRAM {
@@ -1371,9 +1397,11 @@ impl Memory for VRAM {
     }
 }
 
+#[derive(serde::Deserialize, serde::Serialize)]
 struct BCP {
     auto_increment: bool,
     address: u8,
+    #[serde(with = "BigArray")]
     memory: [u8; 64],
 }
 impl BCP {
@@ -1416,9 +1444,11 @@ impl Memory for BCP {
     }
 }
 
+#[derive(serde::Deserialize, serde::Serialize)]
 struct OCP {
     auto_increment: bool,
     address: u8,
+    #[serde(with = "BigArray")]
     memory: [u8; 64],
 }
 impl OCP {
@@ -1461,6 +1491,7 @@ impl Memory for OCP {
     }
 }
 
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct PpuMmu {
     pub lcdc: LCDC,
     pub stat: STAT,
@@ -1476,6 +1507,7 @@ pub struct PpuMmu {
     vram: VRAM,
     bcp: BCP,
     ocp: OCP,
+    #[serde(with = "BigArray")]
     oam: [u8; 0xFE9F - 0xFE00 + 1],
     pub interrupt_flag_lcdstat: bool,
     pub interrupt_flag_vblank: bool,

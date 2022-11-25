@@ -1,6 +1,7 @@
+use minifb::KeyRepeat;
 use rust_gameboy::display::Display;
 use rust_gameboy_core::cartridge::Stable;
-use rust_gameboy_core::gameboy::{GameBoy, HEIGHT, WIDTH};
+use rust_gameboy_core::gameboy::{GameBoy, GameBoyStatus, HEIGHT, WIDTH};
 use rust_gameboy_core::joypad;
 use rust_gameboy_core::util::read_rom;
 use std::io::Write;
@@ -14,7 +15,7 @@ fn main() {
     // let rom_path = "tests/red_ue.gb";
     let bios = read_rom(bios_path).unwrap_or(vec![]);
     let rom = read_rom(rom_path).unwrap();
-    let cartridge = GameBoy::get_cartridge(rom);
+    let cartridge = GameBoy::get_cartridge(rom.clone());
     let mut gameboy = GameBoy::new(bios, cartridge);
     let ram_path = PathBuf::from(rom_path).with_extension("sav");
     let ram_path = ram_path.to_str().unwrap();
@@ -43,6 +44,8 @@ fn main() {
         (minifb::Key::Enter, joypad::JoyPadKey::Start),
     ];
 
+    let mut gameboy_status: GameBoyStatus = Default::default();
+
     while display.is_open() {
         /*
         if frames == 59 {
@@ -61,12 +64,7 @@ fn main() {
             frames = 0;
         }
         */
-        if display.window.is_key_down(minifb::Key::O) {
-            let ram = gameboy.save_sav();
-            File::create(ram_path)
-                .and_then(|mut file| file.write_all(&ram))
-                .unwrap();
-        }
+
         let is_refresh = gameboy.trick();
         if is_refresh {
             let frame_buffer = gameboy.get_frame_buffer();
@@ -82,6 +80,24 @@ fn main() {
                     gameboy.input(vk.clone(), true);
                 } else {
                     gameboy.input(vk.clone(), false);
+                }
+            }
+            if display.window.is_key_pressed(minifb::Key::O, KeyRepeat::No) {
+                let ram = gameboy.save_sav();
+                File::create(ram_path)
+                    .and_then(|mut file| file.write_all(&ram))
+                    .unwrap();
+            }
+
+            if display.window.is_key_pressed(minifb::Key::Y, KeyRepeat::No) {
+                if let Ok(status) = gameboy.save() {
+                    gameboy_status = status;
+                }
+            }
+            if display.window.is_key_pressed(minifb::Key::U, KeyRepeat::No) {
+                let cartridge = GameBoy::get_cartridge(rom.clone());
+                if let Ok(gameboy_new) = gameboy.load(&gameboy_status, cartridge) {
+                    gameboy = gameboy_new;
                 }
             }
         }
