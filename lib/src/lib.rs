@@ -3,7 +3,6 @@ pub mod cpu;
 pub mod memory;
 pub mod mmu;
 pub mod ppu;
-pub mod interrupt;
 pub mod joypad;
 pub mod gameboy;
 pub mod util;

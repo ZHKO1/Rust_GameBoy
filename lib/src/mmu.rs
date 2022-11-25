@@ -1,11 +1,8 @@
 use crate::cartridge::{Cartridge, Stable};
 use crate::gameboy_mode::GameBoyMode;
-use crate::interrupt::Interrupt;
 use crate::joypad::JoyPad;
 use crate::memory::Memory;
 use crate::ppu::PpuMmu;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 struct MemoryBlock {
     memory: [u8; 0xFFFF - 0x8000 + 1],
@@ -185,11 +182,14 @@ pub struct Mmu {
     pub cartridge: Box<dyn Cartridge>,
     pub joypad: JoyPad,
     pub ppu: PpuMmu,
-    interrupt: Rc<RefCell<Interrupt>>,
     wram: WRAM,
     other: MemoryBlock,
     hdma: HDMA,
     pub speed: Speed,
+
+    timer_flag: bool,
+    serial_flag: bool,
+
     pub log_msg: Vec<u8>,
 }
 
@@ -201,10 +201,8 @@ impl Mmu {
         if !skip_boot {
             boot.clone_from(&bios);
         }
-        let interrupt = Interrupt::new();
-        let rc_refcell_interrupt = Rc::new(RefCell::new(interrupt));
-        let joypad = JoyPad::new(rc_refcell_interrupt.clone());
-        let ppu = PpuMmu::new(mode, rc_refcell_interrupt.clone());
+        let joypad = JoyPad::new();
+        let ppu = PpuMmu::new(mode);
         let hdma = HDMA::new();
         let speed = Speed::new();
         let wram = WRAM::new();
@@ -216,9 +214,10 @@ impl Mmu {
             joypad,
             ppu,
             wram,
-            interrupt: rc_refcell_interrupt,
             hdma,
             speed,
+            timer_flag: false,
+            serial_flag: false,
             log_msg: vec![],
         };
         if skip_boot {
@@ -295,7 +294,19 @@ impl Memory for Mmu {
             0xA000..=0xBFFF => self.cartridge.get(index),
             0xFE00..=0xFE9F => self.ppu.get(index),
             0xFF00 => self.joypad.get(index),
-            0xFF0F => self.interrupt.borrow().get(index),
+            0xFF0F => {
+                let vblank_flag = self.ppu.interrupt_flag_vblank;
+                let lcdstat_flag = self.ppu.interrupt_flag_lcdstat;
+                let timer_flag = self.timer_flag;
+                let serial_flag = self.serial_flag;
+                let joypad_flag = self.joypad.interrupt_flag;
+                (vblank_flag as u8) << 0
+                    | (lcdstat_flag as u8) << 1
+                    | (timer_flag as u8) << 2
+                    | (serial_flag as u8) << 3
+                    | (joypad_flag as u8) << 4
+                    | 0b11100000
+            }
             0xFF40..=0xFF45 | 0xFF47..=0xFF4B | 0xFF4F => self.ppu.get(index),
             0xFF4D => {
                 if self.mode == GameBoyMode::GBC {
@@ -342,7 +353,13 @@ impl Memory for Mmu {
             0xA000..=0xBFFF => self.cartridge.set(index, value),
             0xFE00..=0xFE9F => self.ppu.set(index, value),
             0xFF00 => self.joypad.set(index, value),
-            0xFF0F => self.interrupt.borrow_mut().set(index, value),
+            0xFF0F => {
+                self.ppu.interrupt_flag_vblank = value & 0b0000_0001 > 0;
+                self.ppu.interrupt_flag_lcdstat = value & 0b0000_0010 > 0;
+                self.timer_flag = value & 0b0000_0100 > 0;
+                self.serial_flag = value & 0b0000_1000 > 0;
+                self.joypad.interrupt_flag = value & 0b0001_0000 > 0;
+            }
             0xFF40..=0xFF45 | 0xFF47..=0xFF4B | 0xFF4F => self.ppu.set(index, value),
             0xFF4D => {
                 if self.mode == GameBoyMode::GBC {

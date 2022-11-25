@@ -1,6 +1,4 @@
-use crate::interrupt::{Interrupt, InterruptFlag};
 use crate::memory::Memory;
-use std::{cell::RefCell, rc::Rc};
 
 #[derive(Clone)]
 pub enum JoyPadKey {
@@ -15,24 +13,24 @@ pub enum JoyPadKey {
 }
 
 pub struct JoyPad {
-    interrupt: Rc<RefCell<Interrupt>>,
     matrix: u8,
     select: u8,
+    pub interrupt_flag: bool,
 }
 
 impl JoyPad {
-    pub fn new(interrupt: Rc<RefCell<Interrupt>>) -> Self {
+    pub fn new() -> Self {
         Self {
-            interrupt,
             select: 0x00,
             matrix: 0xFF,
+            interrupt_flag: false,
         }
     }
     pub fn input(&mut self, key: JoyPadKey, is_pressed: bool) {
         if is_pressed {
             self.matrix &= !(key as u8);
             if self.select & 0x30 > 0 {
-              self.interrupt.borrow_mut().set_flag(InterruptFlag::Joypad);
+                self.interrupt_flag = true;
             }
         } else {
             self.matrix |= key as u8;

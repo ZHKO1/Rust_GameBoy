@@ -1,6 +1,4 @@
 use crate::gameboy_mode::GameBoyMode;
-use crate::interrupt::Interrupt;
-use crate::interrupt::InterruptFlag::{VBlank as IVBlank, LCDSTAT as ILCDSTAT};
 use crate::memory::Memory;
 use crate::mmu::Mmu;
 use crate::ppu::FetcherStatus::{GetTile, GetTileDataHigh, GetTileDataLow};
@@ -1464,8 +1462,6 @@ impl Memory for OCP {
 }
 
 pub struct PpuMmu {
-    mode: GameBoyMode,
-    interrupt: Rc<RefCell<Interrupt>>,
     pub lcdc: LCDC,
     pub stat: STAT,
     ly: u8,
@@ -1481,17 +1477,17 @@ pub struct PpuMmu {
     bcp: BCP,
     ocp: OCP,
     oam: [u8; 0xFE9F - 0xFE00 + 1],
+    pub interrupt_flag_lcdstat: bool,
+    pub interrupt_flag_vblank: bool,
 }
 impl PpuMmu {
-    pub fn new(mode: GameBoyMode, interrupt: Rc<RefCell<Interrupt>>) -> Self {
+    pub fn new(mode: GameBoyMode) -> Self {
         let lcdc = LCDC::new();
         let stat = STAT::new();
         let vram = VRAM::new(mode);
         let bcp = BCP::new();
         let ocp = OCP::new();
         Self {
-            mode,
-            interrupt,
             lcdc,
             stat,
             ly: 0,
@@ -1507,6 +1503,8 @@ impl PpuMmu {
             bcp,
             ocp,
             oam: [0; 0xFE9F - 0xFE00 + 1],
+            interrupt_flag_lcdstat: false,
+            interrupt_flag_vblank: false,
         }
     }
     pub fn set_mode(&mut self, mode: PpuStatus) {
@@ -1518,20 +1516,20 @@ impl PpuMmu {
             OAMScan => {
                 let enable = self.stat.mode2_interrupt;
                 if enable {
-                    self.interrupt.borrow_mut().set_flag(ILCDSTAT);
+                    self.interrupt_flag_lcdstat = true;
                 }
             }
             VBlank => {
                 let enable = self.stat.mode1_interrupt;
                 if enable {
-                    self.interrupt.borrow_mut().set_flag(ILCDSTAT);
+                    self.interrupt_flag_lcdstat = true;
                 }
-                self.interrupt.borrow_mut().set_flag(IVBlank);
+                self.interrupt_flag_vblank = true;
             }
             HBlank => {
                 let enable = self.stat.mode0_interrupt;
                 if enable {
-                    self.interrupt.borrow_mut().set_flag(ILCDSTAT);
+                    self.interrupt_flag_lcdstat = true;
                 }
             }
             Drawing => {}
@@ -1543,7 +1541,7 @@ impl PpuMmu {
         if ly == lyc {
             let enable = self.stat.lyc_ly_interrupt;
             if enable {
-                self.interrupt.borrow_mut().set_flag(ILCDSTAT);
+                self.interrupt_flag_lcdstat = true;
             }
         }
     }

@@ -13,16 +13,6 @@ extern crate log;
 extern crate simplelog;
 */
 
-struct JoyPadEvent {
-    key: JoyPadKey,
-    is_pressed: bool,
-}
-impl JoyPadEvent {
-    fn new(key: JoyPadKey, is_pressed: bool) -> Self {
-        Self { key, is_pressed }
-    }
-}
-
 pub struct GameBoy {
     pub mmu: Rc<RefCell<Mmu>>,
     ppu: PPU,
