@@ -514,7 +514,7 @@ impl Stable for MBC3 {
         [rtc, self.ram.clone()].concat()
     }
     fn load_sav(&mut self, ram: Vec<u8>) {
-        let mut rtc: Vec<u8> = vec![0; 8];
+        let mut rtc: Vec<u8> = vec![];
         for i in 0..=7 {
             rtc.push(ram[i]);
         }

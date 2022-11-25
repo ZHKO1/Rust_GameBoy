@@ -2,15 +2,10 @@ mod utils;
 use std::io::Read;
 
 use rust_gameboy_core::gameboy::GameBoy as GameBoy_;
+use rust_gameboy_core::gameboy::GameBoyStatus;
 use rust_gameboy_core::gameboy::{HEIGHT, WIDTH};
 use rust_gameboy_core::joypad::JoyPadKey as JoyPadKey_;
 use wasm_bindgen::prelude::*;
-
-// When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
-// allocator.
-#[cfg(feature = "wee_alloc")]
-#[global_allocator]
-static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 extern crate web_sys;
 macro_rules! log {
@@ -50,6 +45,7 @@ pub struct GameBoy {
     bios: Vec<u8>,
     rom: Vec<u8>,
     inner: Option<GameBoy_>,
+    status: Option<GameBoyStatus>,
 }
 
 #[wasm_bindgen]
@@ -61,6 +57,7 @@ impl GameBoy {
             bios: vec![],
             rom: vec![],
             inner: None,
+            status: None,
         })
     }
 
@@ -79,9 +76,9 @@ impl GameBoy {
     }
 
     pub fn frame(&mut self) -> *const u32 {
-        if let Some(inner) = self.inner.as_mut() {
-            while !inner.trick() {}
-            let frame_buffer = inner.get_frame_buffer();
+        if let Some(gameboy) = self.inner.as_mut() {
+            while !gameboy.trick() {}
+            let frame_buffer = gameboy.get_frame_buffer();
             frame_buffer.as_ptr()
         } else {
             panic!("Please execte gameboy.start().")
@@ -106,5 +103,20 @@ impl GameBoy {
 
     pub fn lcd_height() -> usize {
         HEIGHT
+    }
+
+    pub fn quck_save(&mut self) {
+        if let Some(gameboy) = self.inner.as_mut() {
+            self.status = Some(gameboy.save().unwrap());
+        }
+    }
+
+    pub fn quck_load(&mut self) {
+        if let Some(gameboy) = self.inner.as_mut() {
+            let cartridge = GameBoy_::get_cartridge(self.rom.clone());
+            if let Ok(gameboy_new) = gameboy.load(self.status.as_ref().unwrap(), cartridge) {
+                self.inner = Some(gameboy_new);
+            }
+        }
     }
 }

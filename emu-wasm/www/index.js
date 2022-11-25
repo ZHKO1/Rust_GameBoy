@@ -20,7 +20,6 @@ class Emulator {
     }
   }
 
-
   start() {
     this.gameboy.start();
     this.run();
@@ -96,6 +95,7 @@ class Emulator {
     }
     this.ctx.putImageData(imageData, 0, 0);
   }
+
   mapKeyCodeToInput(keycode) {
     let joypad_input = null;
 
@@ -142,6 +142,14 @@ class Emulator {
     if (joypad_input != null && this.running) {
       this.gameboy.input(joypad_input, down);
     }
+  }
+
+  save() {
+    this.gameboy.quck_save()
+  }
+
+  load() {
+    this.gameboy.quck_load()
   }
 }
 
@@ -219,7 +227,7 @@ async function switch_background(type) {
 
 init();
 
-let start = document.querySelector(".webicon");
+let start = document.querySelector(".start");
 start.addEventListener("click", (event) => {
   let romPicker = document.getElementById("rompicker");
   romPicker.addEventListener("change", async (event) => {
@@ -228,6 +236,16 @@ start.addEventListener("click", (event) => {
     await start_game(rom_promise);
   });
   romPicker.click();
+});
+
+let save = document.querySelector(".save");
+save.addEventListener("click", (event) => {
+  emulator.save();
+});
+
+let load = document.querySelector(".load");
+load.addEventListener("click", (event) => {
+  emulator.load();
 });
 
 document.addEventListener("keydown", (event) => {
