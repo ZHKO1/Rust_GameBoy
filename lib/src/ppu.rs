@@ -1035,7 +1035,7 @@ impl PPU {
             self.ly_buffer = Vec::with_capacity(WIDTH);
             self.frame_buffer = [self.init_color; WIDTH * HEIGHT];
             self.fifo = FIFO::new(self.mmu.clone());
-            self.mmu.borrow_mut().ppu.reset_ly();
+            self.mmu.borrow_mut().ppu.ly = 0;
             self.mmu.borrow_mut().ppu.stat.mode_flag = HBlank;
             is_refresh = true;
         } else {
@@ -1165,13 +1165,13 @@ impl PPU {
         result
     }
     fn set_ly(&mut self, ly: u8) {
-        self.mmu.borrow_mut().ppu.set_ly(ly);
+        self.mmu.borrow_mut().ppu.ly = ly;
     }
     fn set_ly_interrupt(&mut self) {
         self.mmu.borrow_mut().ppu.set_ly_interrupt();
     }
     fn get_ly(&self) -> u8 {
-        self.mmu.borrow().ppu.get_ly()
+        self.mmu.borrow().ppu.ly
     }
     fn set_mode(&mut self, mode: PpuStatus) {
         match mode {
@@ -1262,8 +1262,6 @@ impl Memory for LCDC {
 }
 
 pub struct STAT {
-    ly: Rc<RefCell<u8>>,
-    lyc: Rc<RefCell<u8>>,
     pub lyc_ly_interrupt: bool,
     pub mode2_interrupt: bool,
     pub mode1_interrupt: bool,
@@ -1271,10 +1269,8 @@ pub struct STAT {
     pub mode_flag: PpuStatus,
 }
 impl STAT {
-    fn new(ly: Rc<RefCell<u8>>, lyc: Rc<RefCell<u8>>) -> Self {
+    fn new() -> Self {
         Self {
-            ly,
-            lyc,
             lyc_ly_interrupt: false,
             mode2_interrupt: false,
             mode1_interrupt: false,
@@ -1289,9 +1285,9 @@ impl STAT {
             4 => (self.mode1_interrupt as u8) << index,
             3 => (self.mode0_interrupt as u8) << index,
             2 => {
-                let ly = *self.ly.borrow();
-                let lyc = *self.lyc.borrow();
-                ((ly == lyc) as u8) << index
+                // adjust in PpuMmu
+                let lyc_ly_flag = false;
+                (lyc_ly_flag as u8) << index
             }
             _ => panic!("get_complete_bit index out of range"),
         }
@@ -1472,8 +1468,8 @@ pub struct PpuMmu {
     interrupt: Rc<RefCell<Interrupt>>,
     pub lcdc: LCDC,
     pub stat: STAT,
-    ly: Rc<RefCell<u8>>,
-    lyc: Rc<RefCell<u8>>,
+    ly: u8,
+    lyc: u8,
     pub scy: u8,
     pub scx: u8,
     pub wx: u8,
@@ -1489,9 +1485,7 @@ pub struct PpuMmu {
 impl PpuMmu {
     pub fn new(mode: GameBoyMode, interrupt: Rc<RefCell<Interrupt>>) -> Self {
         let lcdc = LCDC::new();
-        let ly = Rc::new(RefCell::new(0));
-        let lyc = Rc::new(RefCell::new(0));
-        let stat = STAT::new(ly.clone(), lyc.clone());
+        let stat = STAT::new();
         let vram = VRAM::new(mode);
         let bcp = BCP::new();
         let ocp = OCP::new();
@@ -1500,8 +1494,8 @@ impl PpuMmu {
             interrupt,
             lcdc,
             stat,
-            ly,
-            lyc,
+            ly: 0,
+            lyc: 0,
             scy: 0,
             scx: 0,
             wx: 0,
@@ -1543,12 +1537,9 @@ impl PpuMmu {
             Drawing => {}
         };
     }
-    pub fn set_ly(&mut self, ly: u8) {
-        *self.ly.borrow_mut() = ly;
-    }
     pub fn set_ly_interrupt(&mut self) {
-        let ly = self.get_ly();
-        let lyc = self.get_lyc();
+        let ly = self.ly;
+        let lyc = self.lyc;
         if ly == lyc {
             let enable = self.stat.lyc_ly_interrupt;
             if enable {
@@ -1556,28 +1547,19 @@ impl PpuMmu {
             }
         }
     }
-    pub fn reset_ly(&mut self) {
-        *self.ly.borrow_mut() = 0;
-    }
-    pub fn get_ly(&self) -> u8 {
-        *self.ly.borrow()
-    }
-    pub fn set_lyc(&mut self, ly: u8) {
-        *self.lyc.borrow_mut() = ly;
-    }
-    pub fn get_lyc(&self) -> u8 {
-        *self.lyc.borrow()
-    }
 }
 impl Memory for PpuMmu {
     fn get(&self, index: u16) -> u8 {
         match index {
             0xFF40 => self.lcdc.get(index),
-            0xFF41 => self.stat.get(index),
+            0xFF41 => {
+                let lyc_ly_flag_bit = (self.ly == self.lyc) as u8;
+                self.stat.get(index) | (lyc_ly_flag_bit << 2)
+            }
             0xFF42 => self.scy,
             0xFF43 => self.scx,
-            0xFF44 => self.get_ly(),
-            0xFF45 => self.get_lyc(),
+            0xFF44 => self.ly,
+            0xFF45 => self.lyc,
             0xFF47 => self.bgp,
             0xFF48 => self.op0,
             0xFF49 => self.op1,
@@ -1597,7 +1579,7 @@ impl Memory for PpuMmu {
             0xFF42 => self.scy = value,
             0xFF43 => self.scx = value,
             0xFF44 => {}
-            0xFF45 => self.set_lyc(value),
+            0xFF45 => self.lyc = value,
             0xFF47 => self.bgp = value,
             0xFF48 => self.op0 = value,
             0xFF49 => self.op1 = value,
