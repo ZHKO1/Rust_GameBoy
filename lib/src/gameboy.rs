@@ -5,9 +5,9 @@ use crate::joypad::JoyPadKey;
 use crate::mmu::{CartridgeProxy, Mmu};
 use crate::ppu::PPU;
 pub use crate::ppu::{HEIGHT, WIDTH};
+use bincode::Error;
 use std::ops::Deref;
 use std::{cell::RefCell, rc::Rc};
-use bincode::Error;
 /*
 use std::fs::File;
 use simplelog::*;
@@ -19,6 +19,8 @@ extern crate simplelog;
 pub struct GameBoyStatus {
     other_status: Vec<u8>,
     mmu_status: Vec<u8>,
+    ram: Vec<u8>,
+    cartridge_status: Vec<u8>,
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -103,7 +105,13 @@ impl GameBoy {
         gameboy.cpu.mmu = rc_refcell_mmu.clone();
         gameboy.ppu = PPU::new(rc_refcell_mmu.clone());
         gameboy.timer.mmu = rc_refcell_mmu.clone();
-
+        gameboy.load_sav(status.ram.clone());
+        gameboy
+            .mmu
+            .borrow_mut()
+            .cartridge
+            .content
+            .load_status(status.cartridge_status.clone());
         Ok(gameboy)
     }
 
@@ -112,9 +120,13 @@ impl GameBoy {
         bincode::serialize_into(&mut other_data, &self)?;
         let mut mmu_data = Vec::new();
         bincode::serialize_into(&mut mmu_data, self.mmu.borrow().deref())?;
+        let ram = self.save_sav();
+        let cartridge_status = self.mmu.borrow().cartridge.content.save_status();
         Ok(GameBoyStatus {
             other_status: other_data,
             mmu_status: mmu_data,
+            ram,
+            cartridge_status,
         })
     }
 }

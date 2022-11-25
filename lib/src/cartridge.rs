@@ -82,12 +82,11 @@ pub trait Cartridge: Stable + Memory {
             _ => false,
         }
     }
+    fn save_status(&self) -> Vec<u8> {
+        vec![]
+    }
+    fn load_status(&mut self, _status: Vec<u8>) {}
 }
-impl Cartridge for RomOnly {}
-impl Cartridge for MBC1 {}
-impl Cartridge for MBC2 {}
-impl Cartridge for MBC3 {}
-impl Cartridge for MBC5 {}
 
 pub trait Stable {
     fn save_sav(&self) -> Vec<u8> {
@@ -116,14 +115,19 @@ impl Default for RomOnly {
         Self { rom: vec![] }
     }
 }
+impl Cartridge for RomOnly {}
 
+#[derive(serde::Deserialize, serde::Serialize)]
 enum MBC1Mode {
-    Rom, //  16Mbit ROM/8KByte RAM
-    Ram, // false 4Mbit ROM/32KByte RAM
+    Rom = 0, //  16Mbit ROM/8KByte RAM
+    Ram,     // false 4Mbit ROM/32KByte RAM
 }
+#[derive(serde::Deserialize, serde::Serialize)]
 struct MBC1 {
     mode: MBC1Mode,
+    #[serde(skip)]
     rom: Vec<u8>,
+    #[serde(skip)]
     ram: Vec<u8>,
     max_rom_blank_bit_num: u8,
     rom_blank_bit: u8,
@@ -230,9 +234,27 @@ impl Stable for MBC1 {
         self.ram = ram;
     }
 }
+impl Cartridge for MBC1 {
+    fn save_status(&self) -> Vec<u8> {
+        let mut data = Vec::new();
+        bincode::serialize_into(&mut data, &self).unwrap();
+        data
+    }
+    fn load_status(&mut self, _status: Vec<u8>) {
+        let result: Self = bincode::deserialize_from(_status.as_slice()).unwrap();
+        self.mode = result.mode;
+        self.max_rom_blank_bit_num = result.max_rom_blank_bit_num;
+        self.rom_blank_bit = result.rom_blank_bit;
+        self.ram_blank_bit = result.ram_blank_bit;
+        self.ram_enable = result.ram_enable;
+    }
+}
 
+#[derive(serde::Deserialize, serde::Serialize)]
 struct MBC2 {
+    #[serde(skip)]
     rom: Vec<u8>,
+    #[serde(skip)]
     ram: Vec<u8>,
     rom_blank: u8,
     ram_enable: bool,
@@ -309,7 +331,21 @@ impl Stable for MBC2 {
         self.ram = ram;
     }
 }
+impl Cartridge for MBC2 {
+    fn save_status(&self) -> Vec<u8> {
+        let mut data = Vec::new();
+        bincode::serialize_into(&mut data, &self).unwrap();
+        data
+    }
+    fn load_status(&mut self, _status: Vec<u8>) {
+        let result: Self = bincode::deserialize_from(_status.as_slice()).unwrap();
+        self.rom_blank = result.rom_blank;
+        self.ram_enable = result.ram_enable;
+        self.max_rom_blank_bit_num = result.max_rom_blank_bit_num;
+    }
+}
 
+#[derive(serde::Deserialize, serde::Serialize)]
 struct MBC3RTC {
     s: u8,
     m: u8,
@@ -382,9 +418,12 @@ impl Stable for MBC3RTC {
         self.zero = u64::from_be_bytes(tmp);
     }
 }
+#[derive(serde::Deserialize, serde::Serialize)]
 struct MBC3 {
     rtc: MBC3RTC,
+    #[serde(skip)]
     rom: Vec<u8>,
+    #[serde(skip)]
     ram: Vec<u8>,
     rom_blank: u8,
     ram_blank: u8,
@@ -486,7 +525,23 @@ impl Stable for MBC3 {
         }
     }
 }
+impl Cartridge for MBC3 {
+    fn save_status(&self) -> Vec<u8> {
+        let mut data = Vec::new();
+        bincode::serialize_into(&mut data, &self).unwrap();
+        data
+    }
+    fn load_status(&mut self, _status: Vec<u8>) {
+        let result: Self = bincode::deserialize_from(_status.as_slice()).unwrap();
+        self.rtc = result.rtc;
+        self.rom_blank = result.rom_blank;
+        self.ram_blank = result.ram_blank;
+        self.ram_enable = result.ram_enable;
+        self.last_write_value = result.last_write_value;
+    }
+}
 
+#[derive(serde::Deserialize, serde::Serialize)]
 struct MBC5 {
     rom: Vec<u8>,
     ram: Vec<u8>,
@@ -574,5 +629,20 @@ impl Stable for MBC5 {
     }
     fn load_sav(&mut self, ram: Vec<u8>) {
         self.ram = ram;
+    }
+}
+impl Cartridge for MBC5 {
+    fn save_status(&self) -> Vec<u8> {
+        let mut data = Vec::new();
+        bincode::serialize_into(&mut data, &self).unwrap();
+        data
+    }
+    fn load_status(&mut self, _status: Vec<u8>) {
+        let result: Self = bincode::deserialize_from(_status.as_slice()).unwrap();
+        self.rom_blank_low_bit = result.rom_blank_low_bit;
+        self.rom_blank_high_bit = result.rom_blank_high_bit;
+        self.ram_blank = result.ram_blank;
+        self.ram_enable = result.ram_enable;
+        self.max_rom_blank_bit_num = result.max_rom_blank_bit_num;
     }
 }
