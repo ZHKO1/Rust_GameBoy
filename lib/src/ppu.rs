@@ -1226,12 +1226,12 @@ impl LCDC {
     fn new() -> Self {
         Self {
             lcd_ppu_enable: true,
-            window_tile_map_area: true,
-            window_enable: true,
-            bg_window_tile_data_area: false,
+            window_tile_map_area: false,
+            window_enable: false,
+            bg_window_tile_data_area: true,
             bg_tile_map_area: false,
             obj_size: false,
-            obj_enable: true,
+            obj_enable: false,
             bg_window_enable: true,
         }
     }

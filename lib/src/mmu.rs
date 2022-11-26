@@ -243,7 +243,6 @@ impl Mmu {
         if skip_boot {
             mmu.set(0xFF50, 1);
         }
-        mmu.set(0xFF40, 0b11100011);
         mmu
     }
     pub fn is_boot(&self) -> bool {
