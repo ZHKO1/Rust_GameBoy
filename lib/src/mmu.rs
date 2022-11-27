@@ -61,7 +61,7 @@ impl HDMA {
     fn get_source_destination_length(&self) -> (u16, u16, u16) {
         let source = u16::from_be_bytes([self.source_high, self.source_low]) & 0xFFF0;
         let destination =
-            (u16::from_be_bytes([self.destination_high, self.destination_low]) | 0x8000) & 0xFFF0;
+            (u16::from_be_bytes([self.destination_high, self.destination_low]) & 0x1ff0) | 0x8000;
         let length = ((self.length_mode_start & 0x7F) as u16 + 1) << 4;
         (source, destination, length)
     }

@@ -15,7 +15,7 @@ extern crate log;
 extern crate simplelog;
 */
 
-#[derive(Default)]
+#[derive(Default, serde::Deserialize, serde::Serialize)]
 pub struct GameBoyStatus {
     other_status: Vec<u8>,
     mmu_status: Vec<u8>,
@@ -92,11 +92,8 @@ impl GameBoy {
         from_vecu8(rom)
     }
 
-    pub fn load(
-        &self,
-        status: &GameBoyStatus,
-        cartridge: Box<dyn Cartridge>,
-    ) -> Result<Self, Error> {
+    pub fn load(&self, status: &[u8], cartridge: Box<dyn Cartridge>) -> Result<Self, Error> {
+        let status: GameBoyStatus = bincode::deserialize_from(status)?;
         let mut gameboy: Self = bincode::deserialize_from(status.other_status.as_slice())?;
         let mut mmu: Mmu = bincode::deserialize_from(status.mmu_status.as_slice())?;
         mmu.cartridge = CartridgeProxy { content: cartridge };
@@ -115,19 +112,22 @@ impl GameBoy {
         Ok(gameboy)
     }
 
-    pub fn save(&self) -> Result<GameBoyStatus, Error> {
+    pub fn save(&self) -> Result<Vec<u8>, Error> {
         let mut other_data = Vec::new();
         bincode::serialize_into(&mut other_data, &self)?;
         let mut mmu_data = Vec::new();
         bincode::serialize_into(&mut mmu_data, self.mmu.borrow().deref())?;
         let ram = self.save_sav();
         let cartridge_status = self.mmu.borrow().cartridge.content.save_status();
-        Ok(GameBoyStatus {
+        let status = GameBoyStatus {
             other_status: other_data,
             mmu_status: mmu_data,
             ram,
             cartridge_status,
-        })
+        };
+        let mut result = vec![];
+        bincode::serialize_into(&mut result, &status)?;
+        Ok(result)
     }
 }
 

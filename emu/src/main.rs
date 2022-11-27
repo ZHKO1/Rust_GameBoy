@@ -23,6 +23,16 @@ fn main() {
     if let Ok(ram) = ram_result {
         gameboy.load_sav(ram);
     }
+    let status_path = PathBuf::from(rom_path).with_extension("status");
+    let status_path = status_path.to_str().unwrap();
+    /*
+    let status_result = read_rom(status_path);
+    if let Ok(status) = status_result {
+        gameboy = gameboy
+            .load(&status, GameBoy::get_cartridge(rom.clone()))
+            .unwrap();
+    }
+    */
     let mut display = Display::init(WIDTH, HEIGHT);
     /*
     let mut start_time = SystemTime::now()
@@ -44,7 +54,7 @@ fn main() {
         (minifb::Key::Enter, joypad::JoyPadKey::Start),
     ];
 
-    let mut gameboy_status: GameBoyStatus = Default::default();
+    let mut gameboy_status: Vec<u8> = Default::default();
 
     while display.is_open() {
         /*
@@ -92,6 +102,9 @@ fn main() {
             if display.window.is_key_pressed(minifb::Key::Y, KeyRepeat::No) {
                 if let Ok(status) = gameboy.save() {
                     gameboy_status = status;
+                    File::create(status_path)
+                        .and_then(|mut file| file.write_all(&gameboy_status))
+                        .unwrap();
                 }
             }
             if display.window.is_key_pressed(minifb::Key::U, KeyRepeat::No) {

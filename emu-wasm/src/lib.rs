@@ -2,7 +2,6 @@ mod utils;
 use std::io::Read;
 
 use rust_gameboy_core::gameboy::GameBoy as GameBoy_;
-use rust_gameboy_core::gameboy::GameBoyStatus;
 use rust_gameboy_core::gameboy::{HEIGHT, WIDTH};
 use rust_gameboy_core::joypad::JoyPadKey as JoyPadKey_;
 use wasm_bindgen::prelude::*;
@@ -45,7 +44,7 @@ pub struct GameBoy {
     bios: Vec<u8>,
     rom: Vec<u8>,
     inner: Option<GameBoy_>,
-    status: Option<GameBoyStatus>,
+    status: Option<Vec<u8>>,
 }
 
 #[wasm_bindgen]
