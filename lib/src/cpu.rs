@@ -1,6 +1,6 @@
 use crate::gameboy_mode::GameBoyMode;
 use crate::memory::Memory;
-use crate::mmu::Mmu;
+use crate::mmu::{HDMAMode, Mmu};
 use crate::util::{check_bit, u16_from_2u8, u8u8_from_u16};
 // use log::info;
 use std::{cell::RefCell, rc::Rc};
@@ -152,6 +152,8 @@ pub struct Cpu {
     #[serde(skip)]
     pub mmu: Rc<RefCell<Mmu>>,
     step_flip: bool,
+
+    is_hblank: bool,
 }
 
 impl Cpu {
@@ -168,6 +170,7 @@ impl Cpu {
             ime_next: None,
             is_halted: false,
             step_flip: false,
+            is_hblank: false,
         };
         if skip_bios {
             cpu.skip_bios();
@@ -211,12 +214,74 @@ impl Cpu {
         return 0;
     }
     fn step(&mut self) -> u32 {
+        let length = self.step_hdma();
+        let length = if self.mmu.borrow().speed.current_speed {
+            2 * length
+        } else {
+            1 * length
+        };
+        if length != 0 {
+            return length;
+        }
         let interrupts = self.interrupt_check_pending();
         if self.is_halted {
             self.step_halt(interrupts) * 4
         } else {
             self.step_run(interrupts) * 4
         }
+    }
+    fn step_hdma(&mut self) -> u32 {
+        if self.mode == GameBoyMode::GBC {
+            let mut mmu_mut = self.mmu.borrow_mut();
+            let active = mmu_mut.hdma.active;
+            let mode = &mmu_mut.hdma.mode;
+            match mode {
+                HDMAMode::GeneralPurposeDMA => {
+                    if active {
+                        let source = mmu_mut.hdma.source;
+                        let destination = mmu_mut.hdma.destination;
+                        let remain = mmu_mut.hdma.remain as u16;
+                        for index in 0x0000..remain {
+                            let s = source + index;
+                            let d = destination + index;
+                            let s_v = mmu_mut.get(s);
+                            mmu_mut.set(d, s_v);
+                        }
+                        mmu_mut.hdma.active = false;
+                        return (remain / 0x10 * 8) as u32;
+                    }
+                }
+                HDMAMode::HBlankDMA => {
+                    let mode_flag = mmu_mut.ppu.stat.mode_flag as u8;
+                    if mode_flag == 0 {
+                        if !self.is_hblank {
+                            self.is_hblank = true;
+                            if active {
+                                let source = mmu_mut.hdma.source;
+                                let destination = mmu_mut.hdma.destination;
+                                let remain = mmu_mut.hdma.remain;
+                                for index in 0x0000..0x10 {
+                                    let s = source + index;
+                                    let d = destination + index;
+                                    let s_v = mmu_mut.get(s);
+                                    mmu_mut.set(d, s_v);
+                                }
+                                mmu_mut.hdma.source = source + 0x10;
+                                mmu_mut.hdma.destination = destination + 0x10;
+                                mmu_mut.hdma.remain = remain - 0x10;
+                                if remain - 0x10 == 0 {
+                                    mmu_mut.hdma.active = false;
+                                }
+                                return 8 as u32;
+                            }
+                        }
+                    } else {
+                        self.is_hblank = false;
+                    }
+                }
+            }
+        }
+        0
     }
     fn step_halt(&mut self, interrupts: u8) -> u32 {
         if self.ime {

@@ -41,58 +41,80 @@ impl Memory for MemoryBlock {
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
-struct HDMA {
-    source_high: u8,
-    source_low: u8,
-    destination_high: u8,
-    destination_low: u8,
-    length_mode_start: u8,
+pub enum HDMAMode {
+    GeneralPurposeDMA,
+    HBlankDMA,
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+pub struct HDMA {
+    pub mode: HDMAMode,
+    pub source: u16,
+    pub destination: u16,
+    pub active: bool,
+    pub remain: usize,
 }
 impl HDMA {
     fn new() -> Self {
         Self {
-            source_high: 0xFF,
-            source_low: 0xFF,
-            destination_high: 0xFF,
-            destination_low: 0xFF,
-            length_mode_start: 0xFF,
+            mode: HDMAMode::GeneralPurposeDMA,
+            source: 0xFFFF,
+            destination: 0xFFFF,
+            active: false,
+            remain: 0,
         }
-    }
-    fn get_source_destination_length(&self) -> (u16, u16, u16) {
-        let source = u16::from_be_bytes([self.source_high, self.source_low]) & 0xFFF0;
-        let destination =
-            (u16::from_be_bytes([self.destination_high, self.destination_low]) & 0x1ff0) | 0x8000;
-        let length = ((self.length_mode_start & 0x7F) as u16 + 1) << 4;
-        (source, destination, length)
     }
 }
 impl Memory for HDMA {
     fn get(&self, index: u16) -> u8 {
         match index {
-            0xFF51 => self.source_high,
-            0xFF52 => self.source_low,
-            0xFF53 => self.destination_high,
-            0xFF54 => self.destination_low,
-            0xFF55 => self.length_mode_start,
+            0xFF51 => 0xFF,
+            0xFF52 => 0xFF,
+            0xFF53 => 0xFF,
+            0xFF54 => 0xFF,
+            0xFF55 => {
+                let bit7 = self.active as u8;
+                let low7bit = ((self.remain >> 4) - 1) as u8;
+                bit7 << 7 | low7bit
+            }
             _ => panic!("HDMA get index not in 0xFF51~0xFF55"),
         }
     }
     fn set(&mut self, index: u16, value: u8) {
         match index {
             0xFF51 => {
-                self.source_high = value;
+                self.source = self.source & 0x00FF | u16::from_be_bytes([value, 0]);
             }
             0xFF52 => {
-                self.source_low = value;
+                self.source = self.source & 0xFF00 | u16::from_be_bytes([0, value & 0xF0]);
             }
             0xFF53 => {
-                self.destination_high = value;
+                self.destination =
+                    self.destination & 0x00FF | (u16::from_be_bytes([value, 0]) & 0x1F00 | 0x8000);
             }
             0xFF54 => {
-                self.destination_low = value;
+                self.destination =
+                    self.destination & 0xFF00 | u16::from_be_bytes([0, value & 0xF0]);
             }
             0xFF55 => {
-                self.length_mode_start = value;
+                let bit7 = value >> 7;
+                if !self.active {
+                    match bit7 {
+                        0 => {
+                            self.mode = HDMAMode::GeneralPurposeDMA;
+                        }
+                        1 => {
+                            self.mode = HDMAMode::HBlankDMA;
+                        }
+                        _ => panic!("hdma bit7 is {}", bit7),
+                    }
+                    self.remain = ((value & 0x7F) as usize + 1) << 4;
+                    self.active = true;
+                } else {
+                    if bit7 == 0 {
+                        self.active = false;
+                    }
+                }
             }
             _ => {}
         }
@@ -203,7 +225,7 @@ pub struct Mmu {
     pub ppu: PpuMmu,
     wram: WRAM,
     other: MemoryBlock,
-    hdma: HDMA,
+    pub hdma: HDMA,
     pub speed: Speed,
 
     timer_flag: bool,
@@ -260,16 +282,6 @@ impl Mmu {
             self.set(destination, source_v);
         }
     }
-    fn hdma(&mut self) {
-        let (source, destination, length) = self.hdma.get_source_destination_length();
-        for index in 0x0000..length {
-            let s = source + index;
-            let d = destination + index;
-            let s_v = self.get(s);
-            self.set(d, s_v);
-        }
-        self.hdma.set(0xFF55, 0xFF);
-    }
     pub fn bind_event(&mut self, index: u16, value: u8) {
         match index {
             0xFF02 => {
@@ -280,11 +292,6 @@ impl Mmu {
             }
             0xFF46 => {
                 self.dma(value);
-            }
-            0xFF55 => {
-                if self.mode == GameBoyMode::GBC {
-                    self.hdma();
-                }
             }
             _ => {}
         };
