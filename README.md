@@ -3,6 +3,10 @@ A GameBoy emulator written in Rust.
 Support GameBoy and GameBoyColor
 Try it here: https://rust-gameboy.netlify.app/
 
+You can start a game with the following command.
+```s
+cargo run --release -- run -b ./tests/DMG_ROM.bin ./tests/Tetris.gb
+```
 # Play
 
 Controls:

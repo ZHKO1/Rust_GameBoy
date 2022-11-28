@@ -1,29 +1,63 @@
 use minifb::KeyRepeat;
 use rust_gameboy::display::Display;
 use rust_gameboy_core::cartridge::Stable;
-use rust_gameboy_core::gameboy::{GameBoy, GameBoyStatus, HEIGHT, WIDTH};
+use rust_gameboy_core::gameboy::{GameBoy, HEIGHT, WIDTH};
 use rust_gameboy_core::joypad;
 use rust_gameboy_core::util::read_rom;
 use std::io::Write;
+use std::path::Path;
 use std::{fs::File, path::PathBuf};
 // use std::time::SystemTime;
+use argh::FromArgs;
 
-fn main() {
-    // let bios_path = "tests/DMG_ROM.bin";
-    let bios_path = "";
-    let rom_path = "tests/Tetris.gb";
-    // let rom_path = "tests/red_ue.gb";
+#[derive(FromArgs, PartialEq, Debug)]
+/// Reach new heights.
+struct Args {
+    #[argh(subcommand)]
+    nested: Option<Subcommands>,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand)]
+enum Subcommands {
+    Info(InfoArgs),
+    Run(RunArgs),
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "run")]
+/// Start Game
+struct RunArgs {
+    #[argh(option, short = 'b')]
+    /// path to bios file
+    bios_path: Option<String>,
+    #[argh(positional)]
+    /// path to rom file    
+    rom_path: String,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "info")]
+/// Show Info
+struct InfoArgs {
+    #[argh(positional)]
+    /// path to rom file
+    rom_path: String,
+}
+
+fn start_game(bios_path: impl AsRef<Path>, rom_path: impl AsRef<Path>) {
+    let ram_path = PathBuf::from(rom_path.as_ref()).with_extension("sav");
+    let status_path = PathBuf::from(rom_path.as_ref()).with_extension("status");
+
     let bios = read_rom(bios_path).unwrap_or(vec![]);
     let rom = read_rom(rom_path).unwrap();
     let cartridge = GameBoy::get_cartridge(rom.clone());
     let mut gameboy = GameBoy::new(bios, cartridge);
-    let ram_path = PathBuf::from(rom_path).with_extension("sav");
     let ram_path = ram_path.to_str().unwrap();
     let ram_result = read_rom(ram_path);
     if let Ok(ram) = ram_result {
         gameboy.load_sav(ram);
     }
-    let status_path = PathBuf::from(rom_path).with_extension("status");
     let status_path = status_path.to_str().unwrap();
     /*
     let status_result = read_rom(status_path);
@@ -54,7 +88,7 @@ fn main() {
         (minifb::Key::Enter, joypad::JoyPadKey::Start),
     ];
 
-    let mut gameboy_status: Vec<u8> = Default::default();
+    let mut gameboy_status: Vec<u8> = vec![];
 
     while display.is_open() {
         /*
@@ -113,6 +147,32 @@ fn main() {
                     gameboy = gameboy_new;
                 }
             }
+        }
+    }
+}
+
+fn main() {
+    let args: Args = argh::from_env();
+    let command = args.nested.unwrap_or_else(|| {
+        println!("Row! Row! Fight The Power!\n");
+        std::process::exit(0);
+    });
+
+    match command {
+        Subcommands::Run(subargs) => {
+            start_game(subargs.bios_path.unwrap_or("".to_owned()), subargs.rom_path);
+        }
+        Subcommands::Info(subargs) => {
+            let rom = read_rom(subargs.rom_path).unwrap();
+            let cartridge = GameBoy::get_cartridge(rom);
+            let title = cartridge.title();
+            let gbc_flag = cartridge.gbc_flag();
+            let ram_size = cartridge.get_ram_size();
+            let cartridge_type = cartridge.get_cartridge_type();
+            println!("title: {}", title);
+            println!("gbc_flag: {}", gbc_flag);
+            println!("ram_size: {}", ram_size);
+            println!("cartridge_type: {}", cartridge_type);
         }
     }
 }
