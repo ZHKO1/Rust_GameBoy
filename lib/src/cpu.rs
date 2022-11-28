@@ -214,14 +214,16 @@ impl Cpu {
         return 0;
     }
     fn step(&mut self) -> u32 {
-        let length = self.step_hdma();
-        let length = if self.mmu.borrow().speed.current_speed {
-            2 * length
-        } else {
-            1 * length
-        };
-        if length != 0 {
-            return length;
+        if self.mode == GameBoyMode::GBC {
+            let length = self.step_hdma();
+            let length = if self.mmu.borrow().speed.current_speed {
+                2 * length
+            } else {
+                1 * length
+            };
+            if length != 0 {
+                return length;
+            }
         }
         let interrupts = self.interrupt_check_pending();
         if self.is_halted {
@@ -231,53 +233,54 @@ impl Cpu {
         }
     }
     fn step_hdma(&mut self) -> u32 {
-        if self.mode == GameBoyMode::GBC {
-            let mut mmu_mut = self.mmu.borrow_mut();
-            let active = mmu_mut.hdma.active;
-            let mode = &mmu_mut.hdma.mode;
-            match mode {
-                HDMAMode::GeneralPurposeDMA => {
-                    if active {
-                        let source = mmu_mut.hdma.source;
-                        let destination = mmu_mut.hdma.destination;
-                        let remain = mmu_mut.hdma.remain as u16;
-                        for index in 0x0000..remain {
-                            let s = source + index;
-                            let d = destination + index;
-                            let s_v = mmu_mut.get(s);
-                            mmu_mut.set(d, s_v);
-                        }
-                        mmu_mut.hdma.active = false;
-                        return (remain / 0x10 * 8) as u32;
+        let mut mmu_mut = self.mmu.borrow_mut();
+        let active = mmu_mut.hdma.active;
+        if !active {
+            return 0;
+        }
+        let mode = &mmu_mut.hdma.mode;
+        match mode {
+            HDMAMode::GeneralPurposeDMA => {
+                if active {
+                    let source = mmu_mut.hdma.source;
+                    let destination = mmu_mut.hdma.destination;
+                    let remain = mmu_mut.hdma.remain as u16;
+                    for index in 0x0000..remain {
+                        let s = source + index;
+                        let d = destination + index;
+                        let s_v = mmu_mut.get(s);
+                        mmu_mut.set(d, s_v);
                     }
+                    mmu_mut.hdma.active = false;
+                    return (remain / 0x10 * 8) as u32;
                 }
-                HDMAMode::HBlankDMA => {
-                    let mode_flag = mmu_mut.ppu.stat.mode_flag as u8;
-                    if mode_flag == 0 {
-                        if !self.is_hblank {
-                            self.is_hblank = true;
-                            if active {
-                                let source = mmu_mut.hdma.source;
-                                let destination = mmu_mut.hdma.destination;
-                                let remain = mmu_mut.hdma.remain;
-                                for index in 0x0000..0x10 {
-                                    let s = source + index;
-                                    let d = destination + index;
-                                    let s_v = mmu_mut.get(s);
-                                    mmu_mut.set(d, s_v);
-                                }
-                                mmu_mut.hdma.source = source + 0x10;
-                                mmu_mut.hdma.destination = destination + 0x10;
-                                mmu_mut.hdma.remain = remain - 0x10;
-                                if remain - 0x10 == 0 {
-                                    mmu_mut.hdma.active = false;
-                                }
-                                return 8 as u32;
+            }
+            HDMAMode::HBlankDMA => {
+                let mode_flag = mmu_mut.ppu.stat.mode_flag as u8;
+                if mode_flag == 0 {
+                    if !self.is_hblank {
+                        self.is_hblank = true;
+                        if active {
+                            let source = mmu_mut.hdma.source;
+                            let destination = mmu_mut.hdma.destination;
+                            let remain = mmu_mut.hdma.remain;
+                            for index in 0x0000..0x10 {
+                                let s = source + index;
+                                let d = destination + index;
+                                let s_v = mmu_mut.get(s);
+                                mmu_mut.set(d, s_v);
                             }
+                            mmu_mut.hdma.source = source + 0x10;
+                            mmu_mut.hdma.destination = destination + 0x10;
+                            mmu_mut.hdma.remain = remain - 0x10;
+                            if remain - 0x10 == 0 {
+                                mmu_mut.hdma.active = false;
+                            }
+                            return 8 as u32;
                         }
-                    } else {
-                        self.is_hblank = false;
                     }
+                } else {
+                    self.is_hblank = false;
                 }
             }
         }
