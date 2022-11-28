@@ -88,7 +88,7 @@ fn start_game(bios_path: impl AsRef<Path>, rom_path: impl AsRef<Path>) {
         (minifb::Key::Enter, joypad::JoyPadKey::Start),
     ];
 
-    let mut gameboy_status: Vec<u8> = vec![];
+    let mut gameboy_status: Vec<u8> = read_rom(status_path).unwrap_or(vec![]);
 
     while display.is_open() {
         /*
